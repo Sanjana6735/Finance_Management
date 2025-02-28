@@ -1,4 +1,5 @@
 
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
   ShoppingBag, 
@@ -11,6 +12,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import AddTransactionDialog from "./AddTransactionDialog";
+import { useToast } from "@/hooks/use-toast";
 
 interface Transaction {
   id: string;
@@ -63,7 +66,9 @@ const TransactionItem = ({ transaction }: { transaction: Transaction }) => {
 };
 
 const TransactionList = () => {
-  const transactions: Transaction[] = [
+  const { toast } = useToast();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [transactions, setTransactions] = useState<Transaction[]>([
     {
       id: "1",
       name: "Amazon Purchase",
@@ -104,16 +109,78 @@ const TransactionList = () => {
       category: "transport",
       date: "May 8, 2023"
     }
-  ];
+  ]);
+
+  const handleAddTransaction = (newTransaction: Omit<Transaction, "id">) => {
+    // Generate a unique ID (in a real app, this would come from the backend)
+    const id = (transactions.length + 1).toString();
+    
+    // Add the new transaction to the beginning of the list
+    setTransactions([{ id, ...newTransaction }, ...transactions]);
+    
+    // Show notification
+    toast({
+      title: "Transaction added",
+      description: `${newTransaction.name} has been added to your transactions.`,
+    });
+  };
+
+  const handleDownload = () => {
+    // Create CSV content
+    const headers = ["Id", "Name", "Amount", "Type", "Category", "Date"];
+    const csvContent = [
+      headers.join(","),
+      ...transactions.map(transaction => 
+        [
+          transaction.id,
+          transaction.name,
+          transaction.amount,
+          transaction.type,
+          transaction.category,
+          transaction.date
+        ].join(",")
+      )
+    ].join("\n");
+    
+    // Create download link
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "transactions.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast({
+      title: "Download complete",
+      description: "Your transactions have been downloaded as a CSV file.",
+    });
+  };
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-lg font-medium">Recent Transactions</CardTitle>
-        <Button variant="ghost" size="sm" className="h-8 gap-1 text-muted-foreground">
-          <span>View All</span>
-          <ChevronRight size={16} />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="h-8 gap-1"
+            onClick={handleDownload}
+          >
+            <span>Download</span>
+          </Button>
+          <Button 
+            variant="default" 
+            size="sm" 
+            className="h-8 gap-1"
+            onClick={() => setDialogOpen(true)}
+          >
+            <Plus size={16} />
+            <span>Add Transaction</span>
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-1">
@@ -122,6 +189,12 @@ const TransactionList = () => {
           ))}
         </div>
       </CardContent>
+      
+      <AddTransactionDialog 
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onAddTransaction={handleAddTransaction}
+      />
     </Card>
   );
 };

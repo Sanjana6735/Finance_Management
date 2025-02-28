@@ -1,4 +1,5 @@
 
+import { useState } from "react";
 import Navbar from "@/components/Navbar";
 import TransactionList from "@/components/TransactionList";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,10 +11,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { CalendarDays, Download, Filter } from "lucide-react";
 import { useEffect } from "react";
+import { format, subDays } from "date-fns";
+import { DateRange } from "react-day-picker";
+import { cn } from "@/lib/utils";
 
 const Transactions = () => {
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: subDays(new Date(), 30),
+    to: new Date(),
+  });
+
   // On component mount, add animation classes
   useEffect(() => {
     const elements = document.querySelectorAll('.animate-on-mount');
@@ -37,11 +48,46 @@ const Transactions = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="h-9 gap-1">
-              <CalendarDays size={15} />
-              <span>May 1 - May 31, 2023</span>
-            </Button>
-            <Button variant="outline" size="icon" className="h-9 w-9">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-1">
+                  <CalendarDays size={15} />
+                  <span>
+                    {dateRange?.from ? (
+                      dateRange.to ? (
+                        <>
+                          {format(dateRange.from, "LLL d, y")} - {format(dateRange.to, "LLL d, y")}
+                        </>
+                      ) : (
+                        format(dateRange.from, "LLL d, y")
+                      )
+                    ) : (
+                      "Select date range"
+                    )}
+                  </span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  initialFocus
+                  mode="range"
+                  defaultMonth={dateRange?.from}
+                  selected={dateRange}
+                  onSelect={setDateRange}
+                  numberOfMonths={2}
+                />
+              </PopoverContent>
+            </Popover>
+            <Button 
+              variant="outline" 
+              size="icon" 
+              className="h-9 w-9"
+              onClick={() => {
+                // Trigger download in TransactionList component by simulating a click event
+                const downloadEvent = new CustomEvent('download-transactions');
+                window.dispatchEvent(downloadEvent);
+              }}
+            >
               <Download size={16} />
             </Button>
           </div>
@@ -90,14 +136,9 @@ const Transactions = () => {
           </Button>
         </div>
         
-        <Card className="mt-6 opacity-0 animate-on-mount animation-delay-200">
-          <CardHeader className="pb-2">
-            <CardTitle>Transaction History</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <TransactionList />
-          </CardContent>
-        </Card>
+        <div className="mt-6 opacity-0 animate-on-mount animation-delay-200">
+          <TransactionList />
+        </div>
       </main>
     </div>
   );
