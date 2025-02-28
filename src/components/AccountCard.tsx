@@ -1,7 +1,9 @@
 
-import { CreditCard } from "lucide-react";
+import { CreditCard, Eye, EyeOff } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
+import { Button } from "./ui/button";
 
 interface AccountCardProps {
   type: "bank" | "credit" | "investment";
@@ -18,6 +20,12 @@ const AccountCard = ({
   cardNumber,
   className
 }: AccountCardProps) => {
+  const [showBalance, setShowBalance] = useState(false);
+  
+  const toggleBalance = () => {
+    setShowBalance(prev => !prev);
+  };
+  
   const gradientColors = {
     bank: "from-blue-600 to-blue-400",
     credit: "from-purple-600 to-pink-400",
@@ -29,6 +37,8 @@ const AccountCard = ({
     credit: "Credit Card",
     investment: "Investment"
   };
+
+  const maskedBalance = "••••••";
 
   return (
     <Card className={cn(
@@ -49,9 +59,19 @@ const AccountCard = ({
           {cardNumber ? `•••• ${cardNumber.slice(-4)}` : ""}
         </p>
         
-        <div className="mt-6">
-          <span className="text-xs font-medium text-white/80">Available Balance</span>
-          <h4 className="text-2xl font-bold">{balance}</h4>
+        <div className="mt-6 flex justify-between items-center">
+          <div>
+            <span className="text-xs font-medium text-white/80">Available Balance</span>
+            <h4 className="text-2xl font-bold">{showBalance ? balance : maskedBalance}</h4>
+          </div>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="text-white/90 hover:text-white hover:bg-white/10"
+            onClick={toggleBalance}
+          >
+            {showBalance ? <EyeOff size={18} /> : <Eye size={18} />}
+          </Button>
         </div>
       </CardContent>
     </Card>

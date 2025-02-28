@@ -11,6 +11,8 @@ import EmiBanner from "@/components/EmiBanner";
 import FinanceInsight from "@/components/FinanceInsight";
 import TransactionList from "@/components/TransactionList";
 import { Button } from "@/components/ui/button";
+import IncomeExpenseChart from "@/components/IncomeExpenseChart";
+import ExpenseCategoryChart from "@/components/ExpenseCategoryChart";
 
 const Dashboard = () => {
   // On component mount, add animation classes
@@ -68,6 +70,11 @@ const Dashboard = () => {
             }}
           />
         </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8 opacity-0 animate-on-mount animation-delay-300">
+          <IncomeExpenseChart />
+          <ExpenseCategoryChart />
+        </div>
         
         <div className="mt-8 opacity-0 animate-on-mount animation-delay-400">
           <AccountsList />
@@ -91,7 +98,7 @@ const Dashboard = () => {
                 <p className="text-sm text-muted-foreground mt-2">
                   Get personalized financial advice from our AI assistant powered by Gemini 1.5.
                 </p>
-                <Button className="mt-4 w-full">Ask the AI Assistant</Button>
+                <Button className="mt-4 w-full" onClick={() => window.location.href = "/financial-advisor"}>Ask the AI Assistant</Button>
               </div>
             </div>
           </div>

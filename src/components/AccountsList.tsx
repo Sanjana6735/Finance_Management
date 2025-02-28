@@ -4,8 +4,11 @@ import { PlusCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AccountCard from "./AccountCard";
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface AccountsListProps {
   className?: string;
@@ -14,6 +17,13 @@ interface AccountsListProps {
 const AccountsList = ({ className }: AccountsListProps) => {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    accountType: "",
+    name: "",
+    balance: "",
+    cardNumber: "",
+  });
+  
   const [accounts, setAccounts] = useState([
     {
       id: "1",
@@ -37,8 +47,44 @@ const AccountsList = ({ className }: AccountsListProps) => {
     }
   ]);
 
+  const handleChange = (field: string, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
   const handleAddAccount = () => {
+    // Validate form
+    if (!formData.accountType || !formData.name || !formData.balance) {
+      toast({
+        title: "Missing information",
+        description: "Please fill in all required fields.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Add new account
+    const newAccount = {
+      id: (accounts.length + 1).toString(),
+      type: formData.accountType as "bank" | "credit" | "investment",
+      name: formData.name,
+      balance: formData.balance.startsWith('$') ? formData.balance : `$${formData.balance}`,
+      cardNumber: formData.cardNumber || undefined
+    };
+    
+    setAccounts([...accounts, newAccount]);
+    
+    // Reset form and close dialog
+    setFormData({
+      accountType: "",
+      name: "",
+      balance: "",
+      cardNumber: "",
+    });
     setOpen(false);
+    
     toast({
       title: "Account successfully added",
       description: "Your new account has been added to your profile.",
@@ -61,13 +107,57 @@ const AccountsList = ({ className }: AccountsListProps) => {
               <DialogTitle>Add New Account</DialogTitle>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Button onClick={handleAddAccount} className="col-span-4">Add Account</Button>
-                <p className="text-xs text-muted-foreground col-span-4 text-center">
-                  Full account linking functionality will be available in the next update.
-                </p>
+              <div className="grid gap-2">
+                <Label htmlFor="accountType">Account Type</Label>
+                <Select 
+                  value={formData.accountType}
+                  onValueChange={(value) => handleChange("accountType", value)}
+                >
+                  <SelectTrigger id="accountType">
+                    <SelectValue placeholder="Select account type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bank">Bank Account</SelectItem>
+                    <SelectItem value="credit">Credit Card</SelectItem>
+                    <SelectItem value="investment">Investment</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="grid gap-2">
+                <Label htmlFor="name">Account Name</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => handleChange("name", e.target.value)}
+                  placeholder="e.g. Chase Checking"
+                />
+              </div>
+              
+              <div className="grid gap-2">
+                <Label htmlFor="balance">Current Balance</Label>
+                <Input
+                  id="balance"
+                  value={formData.balance}
+                  onChange={(e) => handleChange("balance", e.target.value)}
+                  placeholder="e.g. 5000.00"
+                />
+              </div>
+              
+              <div className="grid gap-2">
+                <Label htmlFor="cardNumber">Account Number (Last 4 digits)</Label>
+                <Input
+                  id="cardNumber"
+                  value={formData.cardNumber}
+                  onChange={(e) => handleChange("cardNumber", e.target.value)}
+                  placeholder="e.g. 1234"
+                  maxLength={4}
+                />
               </div>
             </div>
+            <DialogFooter>
+              <Button onClick={handleAddAccount}>Add Account</Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
