@@ -14,6 +14,32 @@ interface AccountsListProps {
   className?: string;
 }
 
+// Define a type for the account
+type AccountType = "bank" | "credit" | "investment";
+
+interface BaseAccount {
+  id: string;
+  name: string;
+  balance: string;
+}
+
+interface BankAccount extends BaseAccount {
+  type: "bank";
+  cardNumber: string;
+}
+
+interface CreditAccount extends BaseAccount {
+  type: "credit";
+  cardNumber: string;
+}
+
+interface InvestmentAccount extends BaseAccount {
+  type: "investment";
+  cardNumber?: string;
+}
+
+type Account = BankAccount | CreditAccount | InvestmentAccount;
+
 const AccountsList = ({ className }: AccountsListProps) => {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -24,24 +50,24 @@ const AccountsList = ({ className }: AccountsListProps) => {
     cardNumber: "",
   });
   
-  const [accounts, setAccounts] = useState([
+  const [accounts, setAccounts] = useState<Account[]>([
     {
       id: "1",
-      type: "bank" as const,
+      type: "bank",
       name: "Chase Checking",
       balance: "$12,456.78",
       cardNumber: "4532123498761234"
     },
     {
       id: "2",
-      type: "credit" as const,
+      type: "credit",
       name: "Amex Platinum",
       balance: "$3,254.22",
       cardNumber: "3766123412341234"
     },
     {
       id: "3",
-      type: "investment" as const,
+      type: "investment",
       name: "Vanguard 401k",
       balance: "$145,678.32"
     }
@@ -65,14 +91,39 @@ const AccountsList = ({ className }: AccountsListProps) => {
       return;
     }
     
-    // Add new account
-    const newAccount = {
-      id: (accounts.length + 1).toString(),
-      type: formData.accountType as "bank" | "credit" | "investment",
-      name: formData.name,
-      balance: formData.balance.startsWith('$') ? formData.balance : `$${formData.balance}`,
-      cardNumber: formData.cardNumber || undefined
-    };
+    // Add new account based on type
+    const accountType = formData.accountType as AccountType;
+    const formattedBalance = formData.balance.startsWith('$') 
+      ? formData.balance 
+      : `$${formData.balance}`;
+    
+    let newAccount: Account;
+    
+    if (accountType === "investment") {
+      newAccount = {
+        id: (accounts.length + 1).toString(),
+        type: "investment",
+        name: formData.name,
+        balance: formattedBalance,
+      };
+    } else if (accountType === "bank") {
+      newAccount = {
+        id: (accounts.length + 1).toString(),
+        type: "bank",
+        name: formData.name,
+        balance: formattedBalance,
+        cardNumber: formData.cardNumber || "0000"
+      };
+    } else {
+      // Credit card
+      newAccount = {
+        id: (accounts.length + 1).toString(),
+        type: "credit",
+        name: formData.name,
+        balance: formattedBalance,
+        cardNumber: formData.cardNumber || "0000"
+      };
+    }
     
     setAccounts([...accounts, newAccount]);
     
