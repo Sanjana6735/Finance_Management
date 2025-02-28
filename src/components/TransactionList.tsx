@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
   ShoppingBag, 
@@ -8,12 +8,14 @@ import {
   Car, 
   Utensils, 
   Plus,
-  ChevronRight
+  Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import AddTransactionDialog from "./AddTransactionDialog";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { format } from "date-fns";
 
 interface Transaction {
   id: string;
@@ -23,6 +25,30 @@ interface Transaction {
   category: "shopping" | "food" | "housing" | "transport" | "other";
   date: string;
 }
+
+// Format a date from ISO string to a user-friendly format
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  
+  if (date.toDateString() === now.toDateString()) {
+    return `Today, ${format(date, "h:mm a")}`;
+  } else if (date.toDateString() === yesterday.toDateString()) {
+    return `Yesterday, ${format(date, "h:mm a")}`;
+  } else {
+    return format(date, "MMM d, yyyy, h:mm a");
+  }
+};
+
+// Format a decimal amount to a currency string
+const formatAmount = (amount: number) => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(amount);
+};
 
 const getCategoryIcon = (category: Transaction["category"]) => {
   switch (category) {
@@ -68,61 +94,123 @@ const TransactionItem = ({ transaction }: { transaction: Transaction }) => {
 const TransactionList = () => {
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [transactions, setTransactions] = useState<Transaction[]>([
-    {
-      id: "1",
-      name: "Amazon Purchase",
-      amount: "$68.35",
-      type: "expense",
-      category: "shopping",
-      date: "Today, 3:45 PM"
-    },
-    {
-      id: "2",
-      name: "Starbucks Coffee",
-      amount: "$4.95",
-      type: "expense",
-      category: "food",
-      date: "Yesterday, 9:23 AM"
-    },
-    {
-      id: "3",
-      name: "Salary Deposit",
-      amount: "$3,500.00",
-      type: "income",
-      category: "other",
-      date: "May 15, 2023"
-    },
-    {
-      id: "4",
-      name: "Apartment Rent",
-      amount: "$1,200.00",
-      type: "expense",
-      category: "housing",
-      date: "May 10, 2023"
-    },
-    {
-      id: "5",
-      name: "Uber Ride",
-      amount: "$12.50",
-      type: "expense",
-      category: "transport",
-      date: "May 8, 2023"
-    }
-  ]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleAddTransaction = (newTransaction: Omit<Transaction, "id">) => {
-    // Generate a unique ID (in a real app, this would come from the backend)
-    const id = (transactions.length + 1).toString();
+  // Fetch transactions from Supabase
+  const fetchTransactions = async () => {
+    setIsLoading(true);
+    setError(null);
     
-    // Add the new transaction to the beginning of the list
-    setTransactions([{ id, ...newTransaction }, ...transactions]);
+    try {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('date', { ascending: false });
+        
+      if (error) {
+        throw error;
+      }
+      
+      if (data) {
+        // Transform the data to match our Transaction interface
+        const formattedTransactions = data.map(item => ({
+          id: item.id,
+          name: item.name,
+          amount: formatAmount(Number(item.amount)),
+          type: item.type as "expense" | "income",
+          category: item.category as "shopping" | "food" | "housing" | "transport" | "other",
+          date: formatDate(item.date)
+        }));
+        
+        setTransactions(formattedTransactions);
+      }
+    } catch (err) {
+      console.error("Error fetching transactions:", err);
+      setError("Failed to load transactions. Please try again later.");
+      toast({
+        title: "Error",
+        description: "Failed to load transactions. Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Initial fetch on component mount
+  useEffect(() => {
+    fetchTransactions();
     
-    // Show notification
-    toast({
-      title: "Transaction added",
-      description: `${newTransaction.name} has been added to your transactions.`,
-    });
+    // Set up listener for download event
+    const handleDownloadEvent = () => {
+      handleDownload();
+    };
+    
+    window.addEventListener('download-transactions', handleDownloadEvent);
+    
+    return () => {
+      window.removeEventListener('download-transactions', handleDownloadEvent);
+    };
+  }, []);
+
+  // Function to add a new transaction to Supabase
+  const handleAddTransaction = async (newTransaction: Omit<Transaction, "id">) => {
+    try {
+      // Extract the numeric amount from the formatted string
+      let numericAmount = newTransaction.amount;
+      if (numericAmount.startsWith('$')) {
+        numericAmount = numericAmount.substring(1);
+      }
+      numericAmount = numericAmount.replace(/,/g, '');
+      
+      // Create a new transaction record in the database
+      const { data, error } = await supabase
+        .from('transactions')
+        .insert([
+          {
+            name: newTransaction.name,
+            amount: parseFloat(numericAmount),
+            type: newTransaction.type,
+            category: newTransaction.category,
+            date: new Date().toISOString() // Using current date/time
+          }
+        ])
+        .select();
+      
+      if (error) {
+        throw error;
+      }
+      
+      if (data && data.length > 0) {
+        // Format the new transaction for display
+        const formattedTransaction = {
+          id: data[0].id,
+          name: data[0].name,
+          amount: formatAmount(Number(data[0].amount)),
+          type: data[0].type,
+          category: data[0].category,
+          date: formatDate(data[0].date)
+        };
+        
+        // Add the new transaction to the beginning of the list
+        setTransactions([formattedTransaction, ...transactions]);
+        
+        // Show success notification
+        toast({
+          title: "Transaction added",
+          description: `${newTransaction.name} has been added to your transactions.`,
+        });
+      }
+    } catch (err) {
+      console.error("Error adding transaction:", err);
+      toast({
+        title: "Error",
+        description: "Failed to add transaction. Please try again later.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleDownload = () => {
@@ -158,6 +246,69 @@ const TransactionList = () => {
     });
   };
 
+  // Show loading state
+  if (isLoading && transactions.length === 0) {
+    return (
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-lg font-medium">Recent Transactions</CardTitle>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="h-8 gap-1"
+              disabled
+            >
+              <span>Download</span>
+            </Button>
+            <Button 
+              variant="default" 
+              size="sm" 
+              className="h-8 gap-1"
+              disabled
+            >
+              <Plus size={16} />
+              <span>Add Transaction</span>
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center justify-center py-6">
+          <Loader2 size={24} className="animate-spin text-muted-foreground" />
+          <p className="mt-2 text-sm text-muted-foreground">Loading transactions...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Show error state
+  if (error && transactions.length === 0) {
+    return (
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-lg font-medium">Recent Transactions</CardTitle>
+          <Button 
+            variant="default" 
+            size="sm" 
+            className="h-8 gap-1"
+            onClick={() => fetchTransactions()}
+          >
+            <span>Retry</span>
+          </Button>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center justify-center py-6">
+          <p className="text-sm text-destructive">{error}</p>
+          <Button 
+            variant="outline" 
+            className="mt-4"
+            onClick={() => fetchTransactions()}
+          >
+            Retry
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -183,11 +334,29 @@ const TransactionList = () => {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="space-y-1">
-          {transactions.map((transaction) => (
-            <TransactionItem key={transaction.id} transaction={transaction} />
-          ))}
-        </div>
+        {transactions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-6">
+            <p className="text-sm text-muted-foreground">No transactions found</p>
+            <Button 
+              variant="outline" 
+              className="mt-4"
+              onClick={() => setDialogOpen(true)}
+            >
+              Add Your First Transaction
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {isLoading && (
+              <div className="flex justify-center py-2">
+                <Loader2 size={16} className="animate-spin text-muted-foreground" />
+              </div>
+            )}
+            {transactions.map((transaction) => (
+              <TransactionItem key={transaction.id} transaction={transaction} />
+            ))}
+          </div>
+        )}
       </CardContent>
       
       <AddTransactionDialog 

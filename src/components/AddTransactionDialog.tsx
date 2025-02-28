@@ -8,9 +8,10 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
-import { CalendarIcon, Camera, Plus } from "lucide-react";
+import { CalendarIcon, Camera, Plus, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AddTransactionDialogProps {
   open: boolean;
@@ -33,8 +34,9 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
   const [date, setDate] = useState<Date>(new Date());
   const [isScanning, setIsScanning] = useState(false);
   const [receipt, setReceipt] = useState<File | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!name || !amount) {
@@ -46,32 +48,70 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
       return;
     }
 
-    // Format amount with $ sign if not already present
-    const formattedAmount = amount.startsWith("$") ? amount : `$${amount}`;
-    
-    onAddTransaction({
-      name,
-      amount: formattedAmount,
-      type,
-      category,
-      date: format(date, "MMMM d, yyyy, h:mm a"),
-    });
-    
-    // Reset form fields
-    setName("");
-    setAmount("");
-    setType("expense");
-    setCategory("other");
-    setDate(new Date());
-    setReceipt(null);
-    
-    // Close dialog
-    onOpenChange(false);
-    
-    toast({
-      title: "Transaction added",
-      description: "Your transaction has been successfully added",
-    });
+    try {
+      setIsSubmitting(true);
+      
+      // Format amount for display
+      let numericAmount = amount;
+      if (numericAmount.startsWith("$")) {
+        numericAmount = numericAmount.substring(1);
+      }
+      numericAmount = numericAmount.replace(/,/g, "");
+      
+      // Format amount with $ sign if not already present
+      const formattedAmount = amount.startsWith("$") ? amount : `$${amount}`;
+      
+      // Insert transaction into Supabase
+      const { data, error } = await supabase
+        .from('transactions')
+        .insert([
+          {
+            name,
+            amount: parseFloat(numericAmount),
+            type,
+            category,
+            date: date.toISOString()
+          }
+        ])
+        .select();
+      
+      if (error) {
+        throw error;
+      }
+      
+      onAddTransaction({
+        name,
+        amount: formattedAmount,
+        type,
+        category,
+        date: format(date, "MMMM d, yyyy, h:mm a"),
+      });
+      
+      // Reset form fields
+      setName("");
+      setAmount("");
+      setType("expense");
+      setCategory("other");
+      setDate(new Date());
+      setReceipt(null);
+      
+      // Close dialog
+      onOpenChange(false);
+      
+      toast({
+        title: "Transaction added",
+        description: "Your transaction has been successfully added",
+      });
+    } catch (error) {
+      console.error("Error adding transaction:", error);
+      toast({
+        title: "Error",
+        description: "Failed to add transaction. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -166,6 +206,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
+                    id="date"
                     className={cn(
                       "mt-1 w-full justify-start text-left font-normal",
                       !date && "text-muted-foreground"
@@ -195,9 +236,19 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
                 variant="outline" 
                 onClick={() => document.getElementById('receipt-upload')?.click()}
                 className="w-full"
+                disabled={isScanning}
               >
-                <Camera className="mr-2 h-4 w-4" />
-                {receipt ? 'Change Receipt' : 'Upload Receipt'}
+                {isScanning ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Scanning...
+                  </>
+                ) : (
+                  <>
+                    <Camera className="mr-2 h-4 w-4" />
+                    {receipt ? 'Change Receipt' : 'Upload Receipt'}
+                  </>
+                )}
               </Button>
               <input
                 id="receipt-upload"
@@ -207,16 +258,23 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
                 className="hidden"
               />
             </div>
-            {receipt && (
+            {receipt && !isScanning && (
               <div className="text-sm text-muted-foreground">
-                File: {receipt.name} {isScanning && "(Scanning...)"}
+                File: {receipt.name}
               </div>
             )}
           </div>
           
           <DialogFooter>
-            <Button type="submit" disabled={isScanning}>
-              Add Transaction
+            <Button type="submit" disabled={isSubmitting || isScanning}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                "Add Transaction"
+              )}
             </Button>
           </DialogFooter>
         </form>
