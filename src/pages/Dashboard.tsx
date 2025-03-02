@@ -10,18 +10,20 @@ import BudgetOverview from "@/components/BudgetOverview";
 import EmiBanner from "@/components/EmiBanner";
 import FinanceInsight from "@/components/FinanceInsight";
 import TransactionList from "@/components/TransactionList";
-import { Button } from "@/components/ui/button";
 import IncomeExpenseChart from "@/components/IncomeExpenseChart";
 import ExpenseCategoryChart from "@/components/ExpenseCategoryChart";
 import { useAuth } from "@/components/AuthProvider";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const Dashboard = () => {
-  const { userId } = useAuth();
-  const [monthlyIncome, setMonthlyIncome] = useState("₹0");
-  const [monthlyExpenses, setMonthlyExpenses] = useState("₹0");
-  const [savingsRate, setSavingsRate] = useState("0%");
+  const { userId, isAuthenticated, isLoading: authLoading } = useAuth();
+  const [monthlyIncome, setMonthlyIncome] = useState<string | null>(null);
+  const [monthlyExpenses, setMonthlyExpenses] = useState<string | null>(null);
+  const [savingsRate, setSavingsRate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasData, setHasData] = useState(false);
+  const { toast } = useToast();
 
   // Fetch user financial data
   useEffect(() => {
@@ -30,13 +32,17 @@ const Dashboard = () => {
       
       setLoading(true);
       try {
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+        
         // Get income transactions for the month
         const { data: incomeData, error: incomeError } = await supabase
           .from('transactions')
           .select('amount')
           .eq('type', 'income')
           .eq('user_id', userId)
-          .gte('date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString());
+          .gte('date', startOfMonth.toISOString());
           
         if (incomeError) throw incomeError;
         
@@ -46,7 +52,7 @@ const Dashboard = () => {
           .select('amount')
           .eq('type', 'expense')
           .eq('user_id', userId)
-          .gte('date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString());
+          .gte('date', startOfMonth.toISOString());
           
         if (expenseError) throw expenseError;
         
@@ -65,15 +71,23 @@ const Dashboard = () => {
         } else {
           setSavingsRate("0%");
         }
+        
+        // Check if user has any data
+        setHasData(totalIncome > 0 || totalExpenses > 0 || (incomeData?.length || 0) > 0 || (expenseData?.length || 0) > 0);
       } catch (err) {
         console.error("Error fetching financial data:", err);
+        toast({
+          title: "Error",
+          description: "Failed to fetch financial data",
+          variant: "destructive"
+        });
       } finally {
         setLoading(false);
       }
     };
     
     fetchUserFinancials();
-  }, [userId]);
+  }, [userId, toast]);
 
   // On component mount, add animation classes
   useEffect(() => {
@@ -97,43 +111,37 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
           <StatCard
             title="Monthly Income"
-            value={loading ? "Loading..." : monthlyIncome}
+            value={loading ? "Loading..." : (monthlyIncome || "₹0")}
             icon={<Wallet size={18} />}
-            trend={{ value: 12, isPositive: true }}
+            trend={hasData ? { value: 0, isPositive: true } : undefined}
             trendText="vs last month"
             className="opacity-0 animate-on-mount"
           />
           <StatCard
             title="Monthly Expenses"
-            value={loading ? "Loading..." : monthlyExpenses}
+            value={loading ? "Loading..." : (monthlyExpenses || "₹0")}
             icon={<ArrowUpRight size={18} />}
-            trend={{ value: 8, isPositive: false }}
+            trend={hasData ? { value: 0, isPositive: false } : undefined}
             trendText="vs last month"
             className="opacity-0 animate-on-mount animation-delay-100"
           />
           <StatCard
             title="Savings Rate"
-            value={loading ? "Loading..." : savingsRate}
+            value={loading ? "Loading..." : (savingsRate || "0%")}
             icon={<PiggyBank size={18} />}
-            trend={{ value: 5, isPositive: true }}
+            trend={hasData ? { value: 0, isPositive: true } : undefined}
             trendText="vs last month"
             className="opacity-0 animate-on-mount animation-delay-200"
           />
         </div>
         
         <div className="mt-8 opacity-0 animate-on-mount animation-delay-300">
-          <EmiBanner 
-            nextPayment={{
-              amount: "₹21,563",
-              date: "May 28, 2023",
-              description: "Home Loan EMI payment due in 5 days"
-            }}
-          />
+          <EmiBanner />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8 opacity-0 animate-on-mount animation-delay-300">
-          <IncomeExpenseChart />
-          <ExpenseCategoryChart />
+          <IncomeExpenseChart userId={userId} />
+          <ExpenseCategoryChart userId={userId} />
         </div>
         
         <div className="mt-8 opacity-0 animate-on-mount animation-delay-400">
@@ -142,7 +150,7 @@ const Dashboard = () => {
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
           <div className="lg:col-span-1 opacity-0 animate-on-mount animation-delay-200">
-            <CreditScoreChart score={725} maxScore={850} />
+            <CreditScoreChart userId={userId} />
           </div>
           
           <div className="opacity-0 animate-on-mount animation-delay-300">
@@ -151,14 +159,19 @@ const Dashboard = () => {
           
           <div className="opacity-0 animate-on-mount animation-delay-400">
             <div className="space-y-6">
-              <FinanceInsight />
+              <FinanceInsight userId={userId} />
               
               <div className="bg-primary/5 rounded-xl p-6">
                 <h3 className="text-base font-medium">Need Financial Advice?</h3>
                 <p className="text-sm text-muted-foreground mt-2">
                   Get personalized financial advice from our AI assistant powered by Gemini 1.5.
                 </p>
-                <Button className="mt-4 w-full" onClick={() => window.location.href = "/financial-advisor"}>Ask the AI Assistant</Button>
+                <button 
+                  className="mt-4 w-full bg-primary text-primary-foreground hover:bg-primary/90 py-2 rounded-md"
+                  onClick={() => window.location.href = "/financial-advisor"}
+                >
+                  Ask the AI Assistant
+                </button>
               </div>
             </div>
           </div>

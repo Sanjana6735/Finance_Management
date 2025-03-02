@@ -1,27 +1,13 @@
 
-import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/components/AuthProvider";
+import { Link } from "react-router-dom";
 
 const Index = () => {
-  const navigate = useNavigate();
-  const { user, loading } = useAuth();
-
-  useEffect(() => {
-    if (user && !loading) {
-      navigate("/dashboard");
-    }
-  }, [user, loading, navigate]);
-
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-background border-b">
         <div className="container mx-auto px-4 py-3 flex justify-between items-center">
           <h1 className="text-xl font-bold">Financial Dashboard</h1>
-          {!user && (
-            <Button onClick={() => navigate("/auth")}>Login / Sign Up</Button>
-          )}
         </div>
       </header>
       
@@ -37,15 +23,15 @@ const Index = () => {
           </div>
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" onClick={() => navigate("/auth")} className="text-lg px-8">
-              Get Started
+            <Button size="lg" asChild className="text-lg px-8">
+              <Link to="/auth">Get Started</Link>
             </Button>
             <Button size="lg" variant="outline" className="text-lg px-8">
               Learn More
             </Button>
           </div>
           
-          <div className="pt-12">
+          <div className="pt-12 space-y-6">
             <img 
               src="/placeholder.svg" 
               alt="Dashboard Preview" 
@@ -53,6 +39,21 @@ const Index = () => {
               width={1000}
               height={600}
             />
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-3xl mx-auto">
+              <div className="text-left">
+                <h3 className="text-xl font-bold mb-2">Track Expenses</h3>
+                <p className="text-muted-foreground">Easily record and categorize your spending to understand where your money is going.</p>
+              </div>
+              <div className="text-left">
+                <h3 className="text-xl font-bold mb-2">Budget Smart</h3>
+                <p className="text-muted-foreground">Set realistic budgets and get alerts when you're approaching your spending limits.</p>
+              </div>
+              <div className="text-left">
+                <h3 className="text-xl font-bold mb-2">AI Insights</h3>
+                <p className="text-muted-foreground">Receive personalized financial advice powered by advanced AI to optimize your finances.</p>
+              </div>
+            </div>
           </div>
         </div>
       </main>

@@ -2,25 +2,24 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "./AuthProvider";
 
-interface ProtectedRouteProps {
-  children: React.ReactNode;
-}
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { isAuthenticated, isLoading } = useAuth();
 
-const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  const { user, loading } = useAuth();
-
-  if (loading) {
+  // Still loading
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
+        <div className="animate-spin h-10 w-10 border-4 border-primary border-t-transparent rounded-full"></div>
       </div>
     );
   }
 
-  if (!user) {
+  // Not authenticated
+  if (!isAuthenticated) {
     return <Navigate to="/auth" replace />;
   }
 
+  // Authenticated
   return <>{children}</>;
 };
 

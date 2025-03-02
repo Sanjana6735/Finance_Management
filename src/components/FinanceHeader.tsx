@@ -11,6 +11,7 @@ import {
 import { useAuth } from "./AuthProvider";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface FinanceHeaderProps {
   totalBalance?: string;
@@ -18,8 +19,10 @@ interface FinanceHeaderProps {
 
 const FinanceHeader = ({ totalBalance: propsTotalBalance }: FinanceHeaderProps) => {
   const { user, userId } = useAuth();
-  const [calculatedBalance, setCalculatedBalance] = useState("₹0");
+  const [calculatedBalance, setCalculatedBalance] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [monthlyChange, setMonthlyChange] = useState<number | null>(null);
+  const { toast } = useToast();
   
   useEffect(() => {
     const fetchTotalBalance = async () => {
@@ -39,28 +42,64 @@ const FinanceHeader = ({ totalBalance: propsTotalBalance }: FinanceHeaderProps) 
           const total = data.reduce((sum, account) => sum + parseFloat(account.balance), 0);
           // Format as INR
           setCalculatedBalance(`₹${total.toLocaleString('en-IN')}`);
+          
+          // Calculate change for this month
+          const startOfMonth = new Date();
+          startOfMonth.setDate(1);
+          startOfMonth.setHours(0, 0, 0, 0);
+          
+          // Get transactions for this month
+          const { data: transactions, error: txError } = await supabase
+            .from('transactions')
+            .select('amount, type')
+            .eq('user_id', userId)
+            .gte('date', startOfMonth.toISOString());
+            
+          if (txError) throw txError;
+          
+          if (transactions && transactions.length > 0) {
+            // Calculate net change
+            const change = transactions.reduce((sum, tx) => {
+              const amount = parseFloat(tx.amount);
+              return tx.type === 'income' ? sum + amount : sum - amount;
+            }, 0);
+            
+            setMonthlyChange(change);
+          } else {
+            setMonthlyChange(0);
+          }
         } else {
           setCalculatedBalance("₹0");
+          setMonthlyChange(0);
         }
       } catch (err) {
         console.error("Error fetching total balance:", err);
         setCalculatedBalance("₹0");
+        setMonthlyChange(0);
+        toast({
+          title: "Error",
+          description: "Failed to fetch account balance",
+          variant: "destructive"
+        });
       } finally {
         setLoading(false);
       }
     };
     
     fetchTotalBalance();
-  }, [userId]);
+  }, [userId, toast]);
   
   // Either use the calculated balance from the database or the prop
   const displayBalance = loading ? 
     "Loading..." : 
-    (calculatedBalance || (propsTotalBalance?.startsWith('$') 
-      ? `₹${(parseFloat(propsTotalBalance.replace('$', '').replace(/,/g, '')) * 83.5).toLocaleString('en-IN')}`
-      : propsTotalBalance || "₹0"));
+    (calculatedBalance || "₹0");
   
   const username = user?.user_metadata?.username || user?.email?.split('@')[0] || "User";
+
+  const currentDate = new Date();
+  const monthName = currentDate.toLocaleString('default', { month: 'long' });
+  const year = currentDate.getFullYear();
+  const dateRange = `${monthName} 1 - ${monthName} ${new Date(year, currentDate.getMonth() + 1, 0).getDate()}, ${year}`;
 
   return (
     <div className="flex flex-col gap-6">
@@ -74,7 +113,7 @@ const FinanceHeader = ({ totalBalance: propsTotalBalance }: FinanceHeaderProps) 
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="h-9 gap-1">
             <CalendarDays size={15} />
-            <span>May 1 - May 31, 2023</span>
+            <span>{dateRange}</span>
           </Button>
           <Select defaultValue="all">
             <SelectTrigger className="w-[130px] h-9">
@@ -93,8 +132,17 @@ const FinanceHeader = ({ totalBalance: propsTotalBalance }: FinanceHeaderProps) 
         <p className="text-sm font-medium text-muted-foreground">Total Balance</p>
         <h2 className="text-4xl font-bold mt-1">{displayBalance}</h2>
         <div className="flex items-center gap-2 mt-2">
-          <span className="text-green-500 text-sm font-medium">+₹28,648</span>
-          <span className="text-sm text-muted-foreground">this month</span>
+          {monthlyChange !== null && (
+            <>
+              <span className={monthlyChange >= 0 ? "text-green-500 text-sm font-medium" : "text-red-500 text-sm font-medium"}>
+                {monthlyChange >= 0 ? "+" : ""}{`₹${Math.abs(monthlyChange).toLocaleString('en-IN')}`}
+              </span>
+              <span className="text-sm text-muted-foreground">this month</span>
+            </>
+          )}
+          {monthlyChange === null && !loading && (
+            <span className="text-sm text-muted-foreground">No transactions this month</span>
+          )}
         </div>
       </div>
     </div>

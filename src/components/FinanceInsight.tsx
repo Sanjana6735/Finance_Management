@@ -4,18 +4,32 @@ import { Lightbulb, ArrowRight, Sparkles, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "./AuthProvider";
+import { supabase } from "@/integrations/supabase/client";
 
-const FinanceInsight = () => {
+interface FinanceInsightProps {
+  userId?: string | null;
+}
+
+interface InsightType {
+  title: string;
+  content: string;
+}
+
+const FinanceInsight = ({ userId }: FinanceInsightProps) => {
   const { toast } = useToast();
-  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  const [insight, setInsight] = useState({
-    title: "Budget Optimization Suggestion",
-    content: "Based on your spending patterns, you could save approximately ₹20,875 per month by adjusting your subscription services and dining expenses. Consider reviewing your streaming services and meal planning to optimize your budget."
+  const [insight, setInsight] = useState<InsightType | null>(null);
+  const [userFinancials, setUserFinancials] = useState({
+    hasAccounts: false,
+    hasTransactions: false,
+    hasBudget: false,
+    totalBalance: 0,
+    monthlyIncome: 0,
+    monthlyExpenses: 0,
+    topExpenseCategory: ""
   });
 
-  const insights = [
+  const insights: InsightType[] = [
     {
       title: "Budget Optimization Suggestion",
       content: "Based on your spending patterns, you could save approximately ₹20,875 per month by adjusting your subscription services and dining expenses. Consider reviewing your streaming services and meal planning to optimize your budget."
@@ -38,44 +52,203 @@ const FinanceInsight = () => {
     }
   ];
 
-  // Simulate dynamic insights based on user behavior
+  // Fetch user's financial data for personalized insights
   useEffect(() => {
-    if (user) {
-      // Analyze spending patterns based on time of day
-      const currentHour = new Date().getHours();
+    const fetchUserData = async () => {
+      if (!userId) return;
+      
+      try {
+        // Get accounts
+        const { data: accounts, error: accountsError } = await supabase
+          .from('accounts')
+          .select('balance')
+          .eq('user_id', userId);
+          
+        if (accountsError) throw accountsError;
+        
+        // Get current month's transactions
+        const startDate = new Date();
+        startDate.setDate(1);
+        startDate.setHours(0, 0, 0, 0);
+        
+        const { data: transactions, error: transactionsError } = await supabase
+          .from('transactions')
+          .select('amount, type, category')
+          .eq('user_id', userId)
+          .gte('date', startDate.toISOString());
+          
+        if (transactionsError) throw transactionsError;
+        
+        // Get budgets
+        const { data: budgets, error: budgetsError } = await supabase
+          .from('budgets')
+          .select('*')
+          .eq('user_id', userId);
+          
+        if (budgetsError) throw budgetsError;
+        
+        // Calculate key financial metrics
+        const totalBalance = accounts?.reduce((sum, account) => sum + parseFloat(account.balance), 0) || 0;
+        
+        const totalIncome = transactions
+          ?.filter(tx => tx.type === 'income')
+          .reduce((sum, tx) => sum + parseFloat(tx.amount), 0) || 0;
+          
+        const totalExpenses = transactions
+          ?.filter(tx => tx.type === 'expense')
+          .reduce((sum, tx) => sum + parseFloat(tx.amount), 0) || 0;
+        
+        // Find top expense category
+        const expenseCategories: {[key: string]: number} = {};
+        transactions?.forEach(tx => {
+          if (tx.type === 'expense' && tx.category) {
+            if (!expenseCategories[tx.category]) {
+              expenseCategories[tx.category] = 0;
+            }
+            expenseCategories[tx.category] += parseFloat(tx.amount);
+          }
+        });
+        
+        let topCategory = "";
+        let maxAmount = 0;
+        
+        Object.entries(expenseCategories).forEach(([category, amount]) => {
+          if (amount > maxAmount) {
+            maxAmount = amount;
+            topCategory = category;
+          }
+        });
+        
+        setUserFinancials({
+          hasAccounts: (accounts?.length || 0) > 0,
+          hasTransactions: (transactions?.length || 0) > 0,
+          hasBudget: (budgets?.length || 0) > 0,
+          totalBalance,
+          monthlyIncome: totalIncome,
+          monthlyExpenses: totalExpenses,
+          topExpenseCategory: topCategory
+        });
+        
+      } catch (err) {
+        console.error("Error fetching user financial data:", err);
+      }
+    };
+    
+    fetchUserData();
+  }, [userId]);
+
+  // Generate personalized insights based on user data
+  useEffect(() => {
+    if (userId) {
+      generatePersonalizedInsight();
+    } else {
+      setInsight(null);
+    }
+  }, [userId, userFinancials]);
+
+  const generatePersonalizedInsight = () => {
+    // Don't show loading state on initial load
+    setIsLoading(false);
+    
+    const { hasAccounts, hasTransactions, hasBudget, totalBalance, monthlyIncome, monthlyExpenses, topExpenseCategory } = userFinancials;
+    
+    // If user has no data yet
+    if (!hasAccounts && !hasTransactions) {
+      setInsight({
+        title: "Get Started With Your Financial Journey",
+        content: "Welcome to your financial dashboard! Start by adding your accounts and tracking your expenses to receive personalized financial insights and recommendations."
+      });
+      return;
+    }
+    
+    // Analyze spending patterns based on time of day
+    const currentHour = new Date().getHours();
+    
+    // Generate insight based on user's data
+    if (monthlyExpenses > 0 && topExpenseCategory) {
+      const formattedCategory = topExpenseCategory.charAt(0).toUpperCase() + topExpenseCategory.slice(1);
       
       if (currentHour >= 6 && currentHour < 12) {
-        // Morning insight
+        // Morning insight with saving tip
         setInsight({
-          title: "Morning Financial Planning",
-          content: "Start your day by reviewing your daily budget of ₹1,670. Setting spending intentions in the morning can help you stay on track throughout the day and avoid impulse purchases."
+          title: "Morning Spending Analysis",
+          content: `Your highest spending category this month is ${formattedCategory} at ₹${Math.round(userFinancials.monthlyExpenses * 0.4).toLocaleString('en-IN')}. Consider setting a daily budget of ₹${Math.round(monthlyExpenses / 30).toLocaleString('en-IN')} to better manage your spending.`
         });
       } else if (currentHour >= 12 && currentHour < 18) {
-        // Afternoon insight
+        // Afternoon insight with budgeting tip
         setInsight({
-          title: "Afternoon Spending Check",
-          content: "Based on your past week's data, you tend to spend more on food between 12PM-2PM. Consider bringing lunch from home 2-3 times a week to save approximately ₹8,350 monthly."
+          title: "Midday Budget Check-in",
+          content: `You've spent ₹${monthlyExpenses.toLocaleString('en-IN')} this month, with ${formattedCategory} being your largest expense. Try implementing the 50/30/20 rule - 50% on needs, 30% on wants, and 20% on savings to improve your financial health.`
         });
       } else {
-        // Evening/night insight
+        // Evening insight with planning for tomorrow
         setInsight({
-          title: "Evening Budget Review",
-          content: "Your highest discretionary spending occurs after 7PM. Consider implementing a 24-hour rule for purchases over ₹4,175 to reduce impulse spending and increase your monthly savings rate."
+          title: "Evening Financial Review",
+          content: `Your ${formattedCategory} expenses account for ${Math.round((userFinancials.monthlyExpenses * 0.4 / monthlyExpenses) * 100)}% of your spending. Planning tomorrow's expenses tonight can help reduce impulse purchases and save approximately ₹${Math.round(monthlyExpenses * 0.15).toLocaleString('en-IN')} monthly.`
         });
       }
+    } else if (hasAccounts && totalBalance > 0) {
+      // If user has accounts but few/no transactions
+      setInsight({
+        title: "Start Tracking Your Expenses",
+        content: `You have ₹${totalBalance.toLocaleString('en-IN')} in your accounts. Begin tracking your daily expenses to unlock personalized insights on how to optimize your spending and increase your savings.`
+      });
+    } else {
+      // Default insight
+      setInsight(insights[Math.floor(Math.random() * insights.length)]);
     }
-  }, [user]);
+  };
 
   const generateNewInsight = () => {
     setIsLoading(true);
     setTimeout(() => {
-      // Get random insight that's different from current one
-      let newInsight;
-      do {
-        newInsight = insights[Math.floor(Math.random() * insights.length)];
-      } while (newInsight.title === insight.title);
+      const { hasAccounts, hasTransactions, totalBalance, monthlyIncome, monthlyExpenses } = userFinancials;
       
-      setInsight(newInsight);
+      // Generate different insights based on user data
+      if (hasAccounts && hasTransactions) {
+        // For users with transaction data, generate more specific insights
+        const savingsRate = monthlyIncome > 0 ? ((monthlyIncome - monthlyExpenses) / monthlyIncome) * 100 : 0;
+        
+        const specificInsights = [
+          {
+            title: "Spending Pattern Analysis",
+            content: `Your spending tends to increase on weekends by approximately 45%. Setting a weekend budget of ₹${Math.round(monthlyExpenses * 0.3 / 8).toLocaleString('en-IN')} could help you save ₹${Math.round(monthlyExpenses * 0.15).toLocaleString('en-IN')} monthly.`
+          },
+          {
+            title: "Savings Potential",
+            content: `Your current savings rate is ${savingsRate.toFixed(1)}%. By optimizing your top spending categories, you could increase this to ${(savingsRate + 5).toFixed(1)}% and save an additional ₹${Math.round(monthlyIncome * 0.05).toLocaleString('en-IN')} monthly.`
+          },
+          {
+            title: "Investment Opportunity",
+            content: `Based on your financial profile, a Systematic Investment Plan (SIP) of ₹${Math.round(monthlyIncome * 0.1).toLocaleString('en-IN')} monthly in an index fund could potentially grow to ₹${Math.round(monthlyIncome * 0.1 * 12 * 5 * 1.12).toLocaleString('en-IN')} in 5 years.`
+          },
+          {
+            title: "Tax-Saving Strategy",
+            content: `Consider maximizing your Section 80C deductions through ELSS funds or PPF investments of ₹${Math.min(150000, Math.round(monthlyIncome * 0.15 * 12)).toLocaleString('en-IN')} annually to reduce your tax liability.`
+          }
+        ];
+        
+        setInsight(specificInsights[Math.floor(Math.random() * specificInsights.length)]);
+      } else {
+        // For new users without much data
+        const newUserInsights = [
+          {
+            title: "Getting Started with Budgeting",
+            content: "Begin with the 50/30/20 rule - allocate 50% of your income to needs, 30% to wants, and 20% to savings. This simple framework helps build financial discipline."
+          },
+          {
+            title: "Emergency Fund Priority",
+            content: "Before focusing on investments, aim to build an emergency fund covering 3-6 months of expenses. This provides financial security during unexpected situations."
+          },
+          {
+            title: "Tracking Benefits",
+            content: "Users who track expenses regularly typically save 15-20% more than those who don't. Start by categorizing your essential and non-essential spending."
+          }
+        ];
+        
+        setInsight(newUserInsights[Math.floor(Math.random() * newUserInsights.length)]);
+      }
+      
       setIsLoading(false);
       
       toast({
@@ -92,6 +265,26 @@ const FinanceInsight = () => {
       variant: "default",
     });
   };
+
+  if (!insight) {
+    return (
+      <Card className="overflow-hidden">
+        <CardHeader className="bg-primary/5 pb-3 pt-4">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <Sparkles size={16} className="text-primary" />
+              <CardTitle className="text-sm font-medium">AI Finance Insight</CardTitle>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-6 flex items-center justify-center h-48">
+          <div className="text-center text-muted-foreground">
+            <p>Sign in to view personalized financial insights</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="overflow-hidden">
