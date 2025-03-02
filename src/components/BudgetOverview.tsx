@@ -1,132 +1,149 @@
 
-import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { supabase } from "@/integrations/supabase/client";
+import { Coffee, Home, ShoppingBag, Car, Utensils } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/use-toast";
+import { useEffect, useState } from "react";
 import { useAuth } from "./AuthProvider";
-import { useToast } from "@/hooks/use-toast";
-import { AlertCircle } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
-interface BudgetCategoryProps {
+interface BudgetCategory {
   name: string;
   spent: number;
-  limit: number;
-  color: string;
-  onThresholdExceeded: (category: string, spent: number, limit: number, percentage: number) => void;
+  total: number;
+  icon: React.ReactNode;
+  percentage: number;
 }
 
-const BudgetCategory = ({ name, spent, limit, color, onThresholdExceeded }: BudgetCategoryProps) => {
-  const percentage = (spent / limit) * 100;
-  
-  useEffect(() => {
-    // Check if budget is over 80% used
-    if (percentage > 80 && percentage < 100) {
-      onThresholdExceeded(name, spent, limit, percentage);
-    }
-  }, [percentage, name, spent, limit, onThresholdExceeded]);
-  
-  return (
-    <div className="space-y-2">
-      <div className="flex justify-between">
-        <span className="text-sm font-medium">{name}</span>
-        <span className="text-sm">
-          ₹{spent.toLocaleString('en-IN')} / ₹{limit.toLocaleString('en-IN')}
-        </span>
-      </div>
-      <Progress 
-        value={percentage} 
-        className={`h-2 ${color} ${percentage > 95 ? 'animate-pulse' : ''}`} 
-      />
-      {percentage > 95 && (
-        <div className="flex items-center text-red-500 text-xs mt-1">
-          <AlertCircle size={12} className="mr-1" />
-          <span>Critical: Budget almost depleted</span>
-        </div>
-      )}
-    </div>
-  );
-};
-
 const BudgetOverview = () => {
-  const { user } = useAuth();
   const { toast } = useToast();
-  const [alertsSent, setAlertsSent] = useState<Record<string, boolean>>({});
-  
-  const categories = [
-    { name: "Housing", spent: 1200, limit: 1500, color: "bg-blue-500" },
-    { name: "Food", spent: 450, limit: 500, color: "bg-green-500" },
-    { name: "Transportation", spent: 220, limit: 300, color: "bg-yellow-500" },
-    { name: "Entertainment", spent: 180, limit: 200, color: "bg-purple-500" },
-    { name: "Shopping", spent: 320, limit: 300, color: "bg-red-500" },
-  ];
+  const { userId } = useAuth();
+  const [budgets, setBudgets] = useState<BudgetCategory[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const totalSpent = categories.reduce((acc, cat) => acc + cat.spent, 0);
-  const totalBudget = categories.reduce((acc, cat) => acc + cat.limit, 0);
-  const totalPercentage = (totalSpent / totalBudget) * 100;
-
-  const handleThresholdExceeded = async (category: string, spent: number, limit: number, percentage: number) => {
-    // Only send an alert once per category per session
-    if (alertsSent[category]) return;
+  useEffect(() => {
+    const fetchBudgetData = async () => {
+      if (!userId) return;
+      
+      setLoading(true);
+      try {
+        // Fetch budget data from Supabase
+        const { data, error } = await supabase
+          .from('budgets')
+          .select('*')
+          .eq('user_id', userId);
+          
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          // Format budget data
+          const formattedBudgets: BudgetCategory[] = data.map(budget => {
+            const icon = getBudgetIcon(budget.category);
+            const percentage = (budget.spent / budget.total) * 100;
+            
+            return {
+              name: budget.category,
+              spent: budget.spent,
+              total: budget.total,
+              icon,
+              percentage
+            };
+          });
+          
+          setBudgets(formattedBudgets);
+        } else {
+          // Set default empty state
+          setBudgets([]);
+        }
+      } catch (err) {
+        console.error("Error fetching budget data:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
     
-    try {
-      // Call Supabase Edge Function to send email alert
-      const { error } = await supabase.functions.invoke('send-budget-alert', {
-        body: {
-          userId: user?.id,
-          userEmail: user?.email,
-          categoryName: category,
-          currentAmount: spent,
-          totalBudget: limit,
-          percentageUsed: percentage
-        },
-      });
-      
-      if (error) throw error;
-      
-      // Mark this category as having had an alert sent
-      setAlertsSent(prev => ({ ...prev, [category]: true }));
-      
-      toast({
-        title: "Budget Alert Sent",
-        description: `You've used ${percentage.toFixed(1)}% of your ${category} budget. Check your email for details.`,
-        variant: "warning",
-      });
-    } catch (error) {
-      console.error("Failed to send budget alert:", error);
+    fetchBudgetData();
+  }, [userId]);
+
+  // Helper function to get the appropriate icon for each budget category
+  const getBudgetIcon = (category: string) => {
+    switch (category.toLowerCase()) {
+      case 'food':
+        return <Coffee size={16} />;
+      case 'housing':
+        return <Home size={16} />;
+      case 'shopping':
+        return <ShoppingBag size={16} />;
+      case 'transport':
+        return <Car size={16} />;
+      default:
+        return <Utensils size={16} />;
     }
   };
 
+  // If there are no budgets yet, show a message
+  if (!loading && budgets.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg font-medium">Budget Overview</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center justify-center py-6">
+          <p className="text-muted-foreground text-center">
+            No budget data available yet.
+          </p>
+          <button 
+            className="mt-4 text-sm text-primary"
+            onClick={() => toast({
+              title: "Set up budgets",
+              description: "Visit the Budgets page to set up your monthly spending limits.",
+              variant: "default"
+            })}
+          >
+            Set up your first budget
+          </button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
-      <CardHeader className="pb-3">
+      <CardHeader>
         <CardTitle className="text-lg font-medium">Budget Overview</CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <span className="text-sm text-muted-foreground">Total Spent</span>
-            <p className="text-2xl font-bold">₹{totalSpent.toLocaleString('en-IN')}</p>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <div className="flex justify-center py-4">
+            <div className="animate-spin h-6 w-6 border-4 border-primary border-t-transparent rounded-full"></div>
           </div>
-          <div className="text-right">
-            <span className="text-sm text-muted-foreground">Budget</span>
-            <p className="text-lg font-medium">₹{totalBudget.toLocaleString('en-IN')}</p>
-          </div>
-        </div>
-        
-        <Progress 
-          value={totalPercentage} 
-          className="h-2 bg-muted mb-6" 
-        />
-        
-        <div className="space-y-4">
-          {categories.map((category) => (
-            <BudgetCategory 
-              key={category.name} 
-              {...category} 
-              onThresholdExceeded={handleThresholdExceeded}
-            />
-          ))}
-        </div>
+        ) : (
+          budgets.map((budget, index) => (
+            <div key={index} className="space-y-1">
+              <div className="flex justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                    {budget.icon}
+                  </div>
+                  <span className="font-medium">{budget.name}</span>
+                </div>
+                <Badge variant={budget.percentage > 90 ? "destructive" : "default"}>
+                  {budget.percentage > 90 ? "Over Budget" : `${budget.percentage.toFixed(0)}%`}
+                </Badge>
+              </div>
+              <Progress value={budget.percentage} className="h-2" />
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">
+                  ₹{budget.spent.toLocaleString('en-IN')} spent
+                </span>
+                <span className="text-muted-foreground">
+                  ₹{budget.total.toLocaleString('en-IN')} budget
+                </span>
+              </div>
+            </div>
+          ))
+        )}
       </CardContent>
     </Card>
   );

@@ -1,5 +1,5 @@
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Wallet, TrendingUp, PiggyBank, ArrowUpRight } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import StatCard from "@/components/StatCard";
@@ -13,8 +13,68 @@ import TransactionList from "@/components/TransactionList";
 import { Button } from "@/components/ui/button";
 import IncomeExpenseChart from "@/components/IncomeExpenseChart";
 import ExpenseCategoryChart from "@/components/ExpenseCategoryChart";
+import { useAuth } from "@/components/AuthProvider";
+import { supabase } from "@/integrations/supabase/client";
 
 const Dashboard = () => {
+  const { userId } = useAuth();
+  const [monthlyIncome, setMonthlyIncome] = useState("₹0");
+  const [monthlyExpenses, setMonthlyExpenses] = useState("₹0");
+  const [savingsRate, setSavingsRate] = useState("0%");
+  const [loading, setLoading] = useState(true);
+
+  // Fetch user financial data
+  useEffect(() => {
+    const fetchUserFinancials = async () => {
+      if (!userId) return;
+      
+      setLoading(true);
+      try {
+        // Get income transactions for the month
+        const { data: incomeData, error: incomeError } = await supabase
+          .from('transactions')
+          .select('amount')
+          .eq('type', 'income')
+          .eq('user_id', userId)
+          .gte('date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString());
+          
+        if (incomeError) throw incomeError;
+        
+        // Get expense transactions for the month
+        const { data: expenseData, error: expenseError } = await supabase
+          .from('transactions')
+          .select('amount')
+          .eq('type', 'expense')
+          .eq('user_id', userId)
+          .gte('date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString());
+          
+        if (expenseError) throw expenseError;
+        
+        // Calculate totals
+        const totalIncome = incomeData?.reduce((sum, item) => sum + parseFloat(item.amount), 0) || 0;
+        const totalExpenses = expenseData?.reduce((sum, item) => sum + parseFloat(item.amount), 0) || 0;
+        
+        // Format as INR
+        setMonthlyIncome(`₹${totalIncome.toLocaleString('en-IN')}`);
+        setMonthlyExpenses(`₹${totalExpenses.toLocaleString('en-IN')}`);
+        
+        // Calculate savings rate if there is income
+        if (totalIncome > 0) {
+          const savings = ((totalIncome - totalExpenses) / totalIncome) * 100;
+          setSavingsRate(`${savings.toFixed(1)}%`);
+        } else {
+          setSavingsRate("0%");
+        }
+      } catch (err) {
+        console.error("Error fetching financial data:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchUserFinancials();
+  }, [userId]);
+
   // On component mount, add animation classes
   useEffect(() => {
     const elements = document.querySelectorAll('.animate-on-mount');
@@ -31,13 +91,13 @@ const Dashboard = () => {
       <Navbar />
       <main className="container px-4 py-8">
         <div className="opacity-0 animate-on-mount">
-          <FinanceHeader totalBalance="$161,389.32" />
+          <FinanceHeader />
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
           <StatCard
             title="Monthly Income"
-            value="$8,560.00"
+            value={loading ? "Loading..." : monthlyIncome}
             icon={<Wallet size={18} />}
             trend={{ value: 12, isPositive: true }}
             trendText="vs last month"
@@ -45,7 +105,7 @@ const Dashboard = () => {
           />
           <StatCard
             title="Monthly Expenses"
-            value="$3,456.78"
+            value={loading ? "Loading..." : monthlyExpenses}
             icon={<ArrowUpRight size={18} />}
             trend={{ value: 8, isPositive: false }}
             trendText="vs last month"
@@ -53,7 +113,7 @@ const Dashboard = () => {
           />
           <StatCard
             title="Savings Rate"
-            value="59.6%"
+            value={loading ? "Loading..." : savingsRate}
             icon={<PiggyBank size={18} />}
             trend={{ value: 5, isPositive: true }}
             trendText="vs last month"
@@ -64,7 +124,7 @@ const Dashboard = () => {
         <div className="mt-8 opacity-0 animate-on-mount animation-delay-300">
           <EmiBanner 
             nextPayment={{
-              amount: "$256.78",
+              amount: "₹21,563",
               date: "May 28, 2023",
               description: "Home Loan EMI payment due in 5 days"
             }}
