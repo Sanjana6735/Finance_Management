@@ -9,6 +9,93 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      accounts: {
+        Row: {
+          balance: number
+          card_number: string | null
+          created_at: string
+          id: string
+          name: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          balance?: number
+          card_number?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          balance?: number
+          card_number?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      budgets: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          spent: number
+          total: number
+          user_id: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          id?: string
+          spent?: number
+          total: number
+          user_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          spent?: number
+          total?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      credit_scores: {
+        Row: {
+          account_age: string | null
+          created_at: string
+          credit_utilization: string | null
+          id: string
+          payment_history: string | null
+          score: number
+          user_id: string
+        }
+        Insert: {
+          account_age?: string | null
+          created_at?: string
+          credit_utilization?: string | null
+          id?: string
+          payment_history?: string | null
+          score: number
+          user_id: string
+        }
+        Update: {
+          account_age?: string | null
+          created_at?: string
+          credit_utilization?: string | null
+          id?: string
+          payment_history?: string | null
+          score?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       transactions: {
         Row: {
           amount: number
@@ -18,6 +105,7 @@ export type Database = {
           id: string
           name: string
           type: string
+          user_id: string | null
         }
         Insert: {
           amount: number
@@ -27,6 +115,7 @@ export type Database = {
           id?: string
           name: string
           type: string
+          user_id?: string | null
         }
         Update: {
           amount?: number
@@ -36,6 +125,7 @@ export type Database = {
           id?: string
           name?: string
           type?: string
+          user_id?: string | null
         }
         Relationships: []
       }
