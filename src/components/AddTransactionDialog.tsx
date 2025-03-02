@@ -12,6 +12,7 @@ import { CalendarIcon, Camera, Plus, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "./AuthProvider";
 
 interface AddTransactionDialogProps {
   open: boolean;
@@ -27,6 +28,7 @@ interface AddTransactionDialogProps {
 
 const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTransactionDialogProps) => {
   const { toast } = useToast();
+  const { userId } = useAuth();
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<"expense" | "income">("expense");
@@ -48,18 +50,27 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
       return;
     }
 
+    if (!userId) {
+      toast({
+        title: "Authentication error",
+        description: "You must be logged in to add transactions",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       
-      // Format amount for display
+      // Format amount for display and calculations
       let numericAmount = amount;
-      if (numericAmount.startsWith("$")) {
+      if (numericAmount.startsWith("₹")) {
         numericAmount = numericAmount.substring(1);
       }
       numericAmount = numericAmount.replace(/,/g, "");
       
-      // Format amount with $ sign if not already present
-      const formattedAmount = amount.startsWith("$") ? amount : `$${amount}`;
+      // Format amount with ₹ sign if not already present
+      const formattedAmount = amount.startsWith("₹") ? amount : `₹${amount}`;
       
       // Insert transaction into Supabase
       const { data, error } = await supabase
@@ -70,12 +81,14 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
             amount: parseFloat(numericAmount),
             type,
             category,
-            date: date.toISOString()
+            date: date.toISOString(),
+            user_id: userId
           }
         ])
         .select();
       
       if (error) {
+        console.error("Transaction insert error:", error);
         throw error;
       }
       
@@ -126,7 +139,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
         
         // Simulate AI extracting data from receipt
         setName("AI Detected Purchase");
-        setAmount("34.99");
+        setAmount("399.99");
         setCategory("shopping");
         
         toast({
@@ -161,7 +174,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
             </div>
             
             <div>
-              <Label htmlFor="amount">Amount</Label>
+              <Label htmlFor="amount">Amount (₹)</Label>
               <Input 
                 id="amount" 
                 value={amount} 

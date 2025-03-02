@@ -16,6 +16,7 @@ import AddTransactionDialog from "./AddTransactionDialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
+import { useAuth } from "./AuthProvider";
 
 interface Transaction {
   id: string;
@@ -44,9 +45,10 @@ const formatDate = (dateString: string) => {
 
 // Format a decimal amount to a currency string
 const formatAmount = (amount: number) => {
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('en-IN', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'INR',
+    maximumFractionDigits: 2
   }).format(amount);
 };
 
@@ -93,6 +95,7 @@ const TransactionItem = ({ transaction }: { transaction: Transaction }) => {
 
 const TransactionList = () => {
   const { toast } = useToast();
+  const { userId } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -100,6 +103,11 @@ const TransactionList = () => {
 
   // Fetch transactions from Supabase
   const fetchTransactions = async () => {
+    if (!userId) {
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     
@@ -107,6 +115,7 @@ const TransactionList = () => {
       const { data, error } = await supabase
         .from('transactions')
         .select('*')
+        .eq('user_id', userId)
         .order('date', { ascending: false });
         
       if (error) {
@@ -141,26 +150,44 @@ const TransactionList = () => {
 
   // Initial fetch on component mount
   useEffect(() => {
-    fetchTransactions();
+    if (userId) {
+      fetchTransactions();
+    }
     
     // Set up listener for download event
     const handleDownloadEvent = () => {
       handleDownload();
     };
     
+    // Set up listener for refresh event
+    const handleRefreshEvent = () => {
+      fetchTransactions();
+    };
+    
     window.addEventListener('download-transactions', handleDownloadEvent);
+    window.addEventListener('refresh-transactions', handleRefreshEvent);
     
     return () => {
       window.removeEventListener('download-transactions', handleDownloadEvent);
+      window.removeEventListener('refresh-transactions', handleRefreshEvent);
     };
-  }, []);
+  }, [userId]);
 
   // Function to add a new transaction to Supabase
   const handleAddTransaction = async (newTransaction: Omit<Transaction, "id">) => {
+    if (!userId) {
+      toast({
+        title: "Authentication error",
+        description: "You must be logged in to add transactions",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
       // Extract the numeric amount from the formatted string
       let numericAmount = newTransaction.amount;
-      if (numericAmount.startsWith('$')) {
+      if (numericAmount.startsWith('₹')) {
         numericAmount = numericAmount.substring(1);
       }
       numericAmount = numericAmount.replace(/,/g, '');
@@ -174,7 +201,8 @@ const TransactionList = () => {
             amount: parseFloat(numericAmount),
             type: newTransaction.type,
             category: newTransaction.category,
-            date: new Date().toISOString() // Using current date/time
+            date: new Date().toISOString(),
+            user_id: userId
           }
         ])
         .select();
@@ -245,6 +273,76 @@ const TransactionList = () => {
       description: "Your transactions have been downloaded as a CSV file.",
     });
   };
+
+  // Apply filters to transactions
+  useEffect(() => {
+    const handleFilterEvent = (event: CustomEvent) => {
+      if (!userId) return;
+      
+      const filters = event.detail;
+      setIsLoading(true);
+      
+      let query = supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', userId);
+      
+      if (filters.dateFrom && filters.dateTo) {
+        query = query.gte('date', filters.dateFrom).lte('date', filters.dateTo);
+      }
+      
+      if (filters.account && filters.account !== 'all') {
+        // If we had account_id in the transactions table, we'd filter by it here
+        // query = query.eq('account_id', filters.account);
+      }
+      
+      if (filters.category && filters.category !== 'all') {
+        query = query.eq('category', filters.category);
+      }
+      
+      if (filters.type && filters.type !== 'all') {
+        query = query.eq('type', filters.type);
+      }
+      
+      if (filters.searchQuery) {
+        query = query.ilike('name', `%${filters.searchQuery}%`);
+      }
+      
+      query.order('date', { ascending: false })
+        .then(({ data, error }) => {
+          if (error) {
+            console.error("Error filtering transactions:", error);
+            toast({
+              title: "Error",
+              description: "Failed to apply filters. Please try again.",
+              variant: "destructive",
+            });
+            return;
+          }
+          
+          if (data) {
+            const formattedTransactions = data.map(item => ({
+              id: item.id,
+              name: item.name,
+              amount: formatAmount(Number(item.amount)),
+              type: item.type,
+              category: item.category,
+              date: formatDate(item.date)
+            }));
+            
+            setTransactions(formattedTransactions);
+          }
+          
+          setIsLoading(false);
+        });
+    };
+    
+    window.addEventListener('filter-transactions', handleFilterEvent as EventListener);
+    
+    return () => {
+      window.removeEventListener('filter-transactions', handleFilterEvent as EventListener);
+    };
+  }, [userId, toast]);
 
   // Show loading state
   if (isLoading && transactions.length === 0) {

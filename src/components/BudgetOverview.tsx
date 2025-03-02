@@ -1,12 +1,13 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Coffee, Home, ShoppingBag, Car, Utensils } from "lucide-react";
+import { Coffee, Home, ShoppingBag, Car, Utensils, PlusCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { useEffect, useState } from "react";
 import { useAuth } from "./AuthProvider";
 import { supabase } from "@/integrations/supabase/client";
+import { Button } from "./ui/button";
 
 interface BudgetCategory {
   name: string;
@@ -24,7 +25,10 @@ const BudgetOverview = () => {
 
   useEffect(() => {
     const fetchBudgetData = async () => {
-      if (!userId) return;
+      if (!userId) {
+        setLoading(false);
+        return;
+      }
       
       setLoading(true);
       try {
@@ -82,6 +86,16 @@ const BudgetOverview = () => {
     }
   };
 
+  const handleSetupBudget = () => {
+    // This should navigate to budget setup page
+    // For now just show a toast
+    toast({
+      title: "Set up budgets",
+      description: "This would navigate to the detailed budget setup page.",
+      variant: "default"
+    });
+  };
+
   // If there are no budgets yet, show a message
   if (!loading && budgets.length === 0) {
     return (
@@ -93,16 +107,13 @@ const BudgetOverview = () => {
           <p className="text-muted-foreground text-center">
             No budget data available yet.
           </p>
-          <button 
-            className="mt-4 text-sm text-primary"
-            onClick={() => toast({
-              title: "Set up budgets",
-              description: "Visit the Budgets page to set up your monthly spending limits.",
-              variant: "default"
-            })}
+          <Button 
+            className="mt-4 gap-2"
+            onClick={handleSetupBudget}
           >
+            <PlusCircle size={16} />
             Set up your first budget
-          </button>
+          </Button>
         </CardContent>
       </Card>
     );

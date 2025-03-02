@@ -1,7 +1,7 @@
 
 import { useState } from "react";
-import { Link } from "react-router-dom";
-import { ChevronDown, Menu, X, Home, PieChart, CreditCard, Wallet, Clock, Settings, Bell, Moon, Sun } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { ChevronDown, Menu, X, Home, PieChart, CreditCard, Wallet, Clock, Settings, Bell, Moon, Sun, User, LogOut } from "lucide-react";
 import { 
   Sheet,
   SheetContent,
@@ -10,15 +10,53 @@ import {
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "./AuthProvider";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useToast } from "@/hooks/use-toast";
 
 const Navbar = () => {
   const isMobile = useIsMobile();
   const [theme, setTheme] = useState<"light" | "dark">("light");
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  const { toast } = useToast();
 
   const toggleTheme = () => {
     const newTheme = theme === "light" ? "dark" : "light";
     setTheme(newTheme);
     document.documentElement.classList.toggle("dark");
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast({
+      title: "Signed out successfully",
+      description: "You have been signed out of your account",
+    });
+    navigate("/auth");
+  };
+
+  const handleProfileClick = () => {
+    toast({
+      title: "Profile",
+      description: "Navigating to profile page",
+    });
+    navigate("/profile");
+  };
+
+  const handleSettingsClick = () => {
+    toast({
+      title: "Settings",
+      description: "Navigating to settings page",
+    });
+    navigate("/settings");
   };
 
   const NavLinks = () => (
@@ -120,26 +158,47 @@ const Navbar = () => {
                       <Settings size={18} />
                       <span>Settings</span>
                     </Link>
+                    <button 
+                      onClick={handleSignOut}
+                      className="flex items-center gap-3 px-2 py-2 text-sm font-medium rounded-md text-destructive hover:bg-accent transition-colors text-left"
+                    >
+                      <LogOut size={18} />
+                      <span>Sign Out</span>
+                    </button>
                   </div>
                 </div>
               </SheetContent>
             </Sheet>
           ) : (
-            <div className="relative group">
-              <Button variant="ghost" className="gap-2 rounded-full">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src="https://github.com/shadcn.png" />
-                  <AvatarFallback>JD</AvatarFallback>
-                </Avatar>
-                <span className="text-sm font-medium">John Doe</span>
-                <ChevronDown size={16} />
-              </Button>
-              <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-card border border-border hidden group-hover:block animate-fade-up z-50">
-                <Link to="/profile" className="block px-4 py-2 text-sm text-foreground hover:bg-accent">Your Profile</Link>
-                <Link to="/settings" className="block px-4 py-2 text-sm text-foreground hover:bg-accent">Settings</Link>
-                <button className="block w-full text-left px-4 py-2 text-sm text-destructive hover:bg-accent">Sign Out</button>
-              </div>
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="gap-2 rounded-full">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={user?.user_metadata?.avatar_url || "https://github.com/shadcn.png"} />
+                    <AvatarFallback>{user?.user_metadata?.username?.[0]?.toUpperCase() || "U"}</AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm font-medium">{user?.user_metadata?.username || user?.email?.split("@")[0] || "User"}</span>
+                  <ChevronDown size={16} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleProfileClick}>
+                  <User className="mr-2 h-4 w-4" />
+                  <span>Profile</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleSettingsClick}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Settings</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Sign Out</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       </div>
