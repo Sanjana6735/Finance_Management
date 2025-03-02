@@ -23,13 +23,18 @@ const StatCard = ({
   className,
   trendText
 }: StatCardProps) => {
+  // Convert dollar values to rupees
+  const formattedValue = value.startsWith('$') 
+    ? `₹${(parseFloat(value.replace('$', '').replace(/,/g, '')) * 83.5).toLocaleString('en-IN')}`
+    : value;
+
   return (
     <Card className={cn("overflow-hidden card-transition", className)}>
       <CardContent className="p-6">
         <div className="flex justify-between items-start">
           <div>
             <p className="text-sm font-medium text-muted-foreground mb-1">{title}</p>
-            <h3 className="text-2xl font-bold">{value}</h3>
+            <h3 className="text-2xl font-bold">{formattedValue}</h3>
             
             {trend && (
               <div className="flex items-center mt-2">

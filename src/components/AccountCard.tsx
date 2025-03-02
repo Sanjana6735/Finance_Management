@@ -39,6 +39,11 @@ const AccountCard = ({
   };
 
   const maskedBalance = "••••••";
+  
+  // Convert dollar value to rupees
+  const rupeesBalance = balance.startsWith('$') 
+    ? `₹${(parseFloat(balance.replace('$', '').replace(/,/g, '')) * 83.5).toLocaleString('en-IN')}`
+    : balance;
 
   return (
     <Card className={cn(
@@ -62,7 +67,7 @@ const AccountCard = ({
         <div className="mt-6 flex justify-between items-center">
           <div>
             <span className="text-xs font-medium text-white/80">Available Balance</span>
-            <h4 className="text-2xl font-bold">{showBalance ? balance : maskedBalance}</h4>
+            <h4 className="text-2xl font-bold">{showBalance ? rupeesBalance : maskedBalance}</h4>
           </div>
           <Button 
             variant="ghost" 
