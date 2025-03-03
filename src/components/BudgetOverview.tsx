@@ -8,8 +8,10 @@ import { useEffect, useState } from "react";
 import { useAuth } from "./AuthProvider";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "./ui/button";
+import { useNavigate } from "react-router-dom";
 
 interface BudgetCategory {
+  id: string;
   name: string;
   spent: number;
   total: number;
@@ -22,6 +24,7 @@ const BudgetOverview = () => {
   const { userId } = useAuth();
   const [budgets, setBudgets] = useState<BudgetCategory[]>([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchBudgetData = async () => {
@@ -47,6 +50,7 @@ const BudgetOverview = () => {
             const percentage = (budget.spent / budget.total) * 100;
             
             return {
+              id: budget.id,
               name: budget.category,
               spent: budget.spent,
               total: budget.total,
@@ -57,43 +61,44 @@ const BudgetOverview = () => {
           
           setBudgets(formattedBudgets);
         } else {
-          // Set default empty state
+          // Set empty state when no budgets are found
           setBudgets([]);
         }
       } catch (err) {
         console.error("Error fetching budget data:", err);
+        toast({
+          title: "Error",
+          description: "Could not load budget data",
+          variant: "destructive"
+        });
       } finally {
         setLoading(false);
       }
     };
     
     fetchBudgetData();
-  }, [userId]);
+  }, [userId, toast]);
 
   // Helper function to get the appropriate icon for each budget category
   const getBudgetIcon = (category: string) => {
     switch (category.toLowerCase()) {
       case 'food':
-        return <Coffee size={16} />;
+        return <Utensils size={16} />;
       case 'housing':
         return <Home size={16} />;
       case 'shopping':
         return <ShoppingBag size={16} />;
       case 'transport':
         return <Car size={16} />;
+      case 'coffee':
+        return <Coffee size={16} />;
       default:
         return <Utensils size={16} />;
     }
   };
 
   const handleSetupBudget = () => {
-    // This should navigate to budget setup page
-    // For now just show a toast
-    toast({
-      title: "Set up budgets",
-      description: "This would navigate to the detailed budget setup page.",
-      variant: "default"
-    });
+    navigate("/budgets");
   };
 
   // If there are no budgets yet, show a message
@@ -130,8 +135,8 @@ const BudgetOverview = () => {
             <div className="animate-spin h-6 w-6 border-4 border-primary border-t-transparent rounded-full"></div>
           </div>
         ) : (
-          budgets.map((budget, index) => (
-            <div key={index} className="space-y-1">
+          budgets.map((budget) => (
+            <div key={budget.id} className="space-y-1">
               <div className="flex justify-between">
                 <div className="flex items-center gap-2">
                   <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-primary">

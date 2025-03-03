@@ -33,9 +33,9 @@ const Index = () => {
           
           <div className="pt-12 space-y-6">
             <img 
-              src="/placeholder.svg" 
-              alt="Dashboard Preview" 
-              className="rounded-xl shadow-xl mx-auto max-w-full"
+              src="https://images.unsplash.com/photo-1579621970563-ebec7560ff3e?auto=format&fit=crop&q=80&w=1000"
+              alt="Financial Planning" 
+              className="rounded-xl shadow-xl mx-auto max-w-full h-auto"
               width={1000}
               height={600}
             />
