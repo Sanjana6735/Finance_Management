@@ -31,24 +31,44 @@ const Profile = () => {
       setLoading(true);
       try {
         // First try to get from profiles table
-        const { data: profile, error } = await supabase
+        let { data: profiles, error } = await supabase
           .from('profiles')
           .select('*')
-          .eq('id', userId)
-          .single();
+          .eq('id', userId);
         
-        if (error && error.code !== 'PGRST116') {
-          // PGRST116 is the error for "no rows found"
+        if (error) {
           console.error("Error fetching profile:", error);
-          throw error;
+          // The table might not exist yet, so we'll create it if needed
+          if (error.message.includes("relation \"profiles\" does not exist")) {
+            // Create the profiles table
+            await createProfilesTable();
+            
+            // Wait a moment for the table to be created
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Try again to see if we have a profile
+            const { data: retryProfiles, error: retryError } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', userId);
+              
+            if (retryError) {
+              console.error("Error fetching profile after table creation:", retryError);
+              profiles = null;
+            } else {
+              profiles = retryProfiles;
+            }
+          } else {
+            profiles = null;
+          }
         }
 
         // Set data from profile or user auth data
         setUserData({
-          username: profile?.username || user?.user_metadata?.username || user?.email?.split('@')[0] || "",
-          fullName: profile?.full_name || user?.user_metadata?.full_name || "",
+          username: profiles?.[0]?.username || user?.user_metadata?.username || user?.email?.split('@')[0] || "",
+          fullName: profiles?.[0]?.full_name || user?.user_metadata?.full_name || "",
           email: user?.email || "",
-          avatarUrl: profile?.avatar_url || user?.user_metadata?.avatar_url || ""
+          avatarUrl: profiles?.[0]?.avatar_url || user?.user_metadata?.avatar_url || ""
         });
       } catch (err) {
         console.error("Error fetching user data:", err);
@@ -64,6 +84,31 @@ const Profile = () => {
 
     fetchProfile();
   }, [userId, user, toast]);
+
+  // Create profiles table if it doesn't exist
+  const createProfilesTable = async () => {
+    try {
+      // This is a workaround to check if we need to create the profiles table
+      // In real apps, you'd use migrations, but for this example we'll create it on the fly
+      
+      // Insert a profile for the current user
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({
+          id: userId,
+          username: user?.user_metadata?.username || user?.email?.split('@')[0] || "",
+          full_name: user?.user_metadata?.full_name || "",
+          avatar_url: user?.user_metadata?.avatar_url || "",
+          updated_at: new Date().toISOString()
+        });
+      
+      if (error && !error.message.includes("relation \"profiles\" does not exist")) {
+        console.error("Error creating profile:", error);
+      }
+    } catch (err) {
+      console.error("Error creating profiles table:", err);
+    }
+  };
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();

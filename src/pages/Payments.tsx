@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, CalendarClock, Clock, Check, AlertCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -60,122 +60,111 @@ const Payments = () => {
 
       setLoading(true);
       try {
-        // Check if the user has any loan accounts (negative balance)
-        const { data: accounts, error: accountsError } = await supabase
-          .from('accounts')
+        // First check for transactions marked as EMI/payments
+        const { data: emiTransactions, error: transactionError } = await supabase
+          .from('transactions')
           .select('*')
-          .eq('user_id', userId);
+          .eq('user_id', userId)
+          .or('category.eq.emi,category.eq.loan,category.eq.payment')
+          .order('date', { ascending: false });
 
-        if (accountsError) throw accountsError;
+        if (transactionError) throw transactionError;
 
-        // Generate synthetic payment data based on accounts
-        if (accounts && accounts.length > 0) {
-          // Find any accounts with negative balance (loans)
-          const loanAccounts = accounts.filter(acc => parseFloat(acc.balance) < 0);
-          
-          const payments: PaymentItem[] = [];
-          let totalMonthly = 0;
-          let upcomingTotal = 0;
-          let paidTotal = 0;
-          
-          // If there are loan accounts, create payment records for them
-          if (loanAccounts.length > 0) {
-            loanAccounts.forEach((loan, index) => {
-              const loanAmount = Math.abs(parseFloat(loan.balance));
-              const emiAmount = loanAmount * 0.05; // 5% of loan as EMI
-              
-              // Add an upcoming payment
-              const futureDate = new Date();
-              futureDate.setDate(futureDate.getDate() + (index * 3) + 5);
-              payments.push({
-                id: `upcoming-${index}`,
-                name: `${loan.name} EMI`,
-                amount: `₹${emiAmount.toLocaleString('en-IN')}`,
-                date: futureDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' }),
-                status: 'upcoming',
-                description: `${loan.name} EMI payment due in ${Math.floor((futureDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days`
-              });
-              upcomingTotal += emiAmount;
-              totalMonthly += emiAmount;
-              
-              // Add a paid payment
-              const pastDate = new Date();
-              pastDate.setDate(pastDate.getDate() - (index * 5) - 10);
-              payments.push({
-                id: `paid-${index}`,
-                name: `${loan.name} EMI`,
-                amount: `₹${emiAmount.toLocaleString('en-IN')}`,
-                date: pastDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' }),
-                status: 'paid',
-                description: `${loan.name} EMI paid successfully`
-              });
-              paidTotal += emiAmount;
-              totalMonthly += emiAmount;
+        const payments: PaymentItem[] = [];
+        let monthlyTotal = 0;
+        let upcomingTotal = 0;
+        let paidTotal = 0;
+        
+        // Create payments from transactions
+        if (emiTransactions && emiTransactions.length > 0) {
+          emiTransactions.forEach((transaction) => {
+            const transactionDate = new Date(transaction.date);
+            const now = new Date();
+            const status: 'upcoming' | 'paid' | 'missed' = 
+              transactionDate > now ? 'upcoming' : 
+              transaction.type === 'expense' ? 'paid' : 'missed';
+            
+            const amount = parseFloat(transaction.amount);
+            
+            payments.push({
+              id: transaction.id,
+              name: transaction.name,
+              amount: `₹${amount.toLocaleString('en-IN')}`,
+              date: transactionDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' }),
+              status,
+              description: status === 'upcoming' 
+                ? `${transaction.name} payment due in ${Math.floor((transactionDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))} days`
+                : status === 'paid' 
+                  ? `${transaction.name} paid successfully`
+                  : `${transaction.name} payment missed`
             });
             
-            // Maybe add a missed payment for realism
-            if (loanAccounts.length > 1) {
-              const missedDate = new Date();
-              missedDate.setDate(missedDate.getDate() - 15);
-              const missedAmount = Math.abs(parseFloat(loanAccounts[0].balance)) * 0.05;
-              
-              payments.push({
-                id: 'missed-1',
-                name: 'Education Loan EMI',
-                amount: `₹${missedAmount.toLocaleString('en-IN')}`,
-                date: missedDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' }),
-                status: 'missed',
-                description: 'Education Loan EMI payment missed'
+            monthlyTotal += amount;
+            if (status === 'upcoming') upcomingTotal += amount;
+            if (status === 'paid') paidTotal += amount;
+          });
+          
+          setEmiPayments(payments);
+          setTotalMonthlyPayments(`₹${monthlyTotal.toLocaleString('en-IN')}`);
+          setUpcomingPayments(`₹${upcomingTotal.toLocaleString('en-IN')}`);
+          setPaidPayments(`₹${paidTotal.toLocaleString('en-IN')}`);
+        } else {
+          // Check if the user has any loan accounts (negative balance)
+          const { data: accounts, error: accountsError } = await supabase
+            .from('accounts')
+            .select('*')
+            .eq('user_id', userId)
+            .lt('balance', 0);
+
+          if (accountsError) throw accountsError;
+
+          // Generate synthetic payment data based on accounts with negative balance
+          if (accounts && accounts.length > 0) {
+            // Find any accounts with negative balance (loans)
+            const loanAccounts = accounts;
+            
+            // If there are loan accounts, create payment records for them
+            if (loanAccounts.length > 0) {
+              loanAccounts.forEach((loan, index) => {
+                const loanAmount = Math.abs(parseFloat(loan.balance));
+                const emiAmount = loanAmount * 0.05; // 5% of loan as EMI
+                
+                // Add an upcoming payment
+                const futureDate = new Date();
+                futureDate.setDate(futureDate.getDate() + (index * 3) + 5);
+                payments.push({
+                  id: `upcoming-${index}`,
+                  name: `${loan.name} EMI`,
+                  amount: `₹${emiAmount.toLocaleString('en-IN')}`,
+                  date: futureDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' }),
+                  status: 'upcoming',
+                  description: `${loan.name} EMI payment due in ${Math.floor((futureDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days`
+                });
+                upcomingTotal += emiAmount;
+                monthlyTotal += emiAmount;
+                
+                // Add a paid payment for history
+                const pastDate = new Date();
+                pastDate.setDate(pastDate.getDate() - (index * 5) - 10);
+                payments.push({
+                  id: `paid-${index}`,
+                  name: `${loan.name} EMI`,
+                  amount: `₹${emiAmount.toLocaleString('en-IN')}`,
+                  date: pastDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' }),
+                  status: 'paid',
+                  description: `${loan.name} EMI paid successfully`
+                });
+                paidTotal += emiAmount;
+                monthlyTotal += emiAmount;
               });
-              totalMonthly += missedAmount;
             }
           }
           
-          // If no loans were found, add some sample data
-          if (payments.length === 0) {
-            const dummyPayments: PaymentItem[] = [
-              {
-                id: 1,
-                name: "Home Loan EMI",
-                amount: "₹12,500",
-                date: "May 28, 2023",
-                status: "upcoming",
-                description: "Home Loan EMI payment due in 5 days"
-              },
-              {
-                id: 2,
-                name: "Car Loan EMI",
-                amount: "₹4,500",
-                date: "June 5, 2023",
-                status: "upcoming",
-                description: "Car Loan EMI payment due in 13 days"
-              },
-              {
-                id: 3,
-                name: "Personal Loan EMI",
-                amount: "₹3,200",
-                date: "May 15, 2023",
-                status: "paid",
-                description: "Personal Loan EMI paid successfully"
-              }
-            ];
-            
-            setEmiPayments(dummyPayments);
-            setTotalMonthlyPayments("₹20,200");
-            setUpcomingPayments("₹17,000");
-            setPaidPayments("₹3,200");
-          } else {
-            setEmiPayments(payments);
-            setTotalMonthlyPayments(`₹${totalMonthly.toLocaleString('en-IN')}`);
-            setUpcomingPayments(`₹${upcomingTotal.toLocaleString('en-IN')}`);
-            setPaidPayments(`₹${paidTotal.toLocaleString('en-IN')}`);
-          }
-        } else {
-          // No accounts found, set empty state
-          setEmiPayments([]);
-          setTotalMonthlyPayments("₹0");
-          setUpcomingPayments("₹0");
-          setPaidPayments("₹0");
+          // Set data even if empty
+          setEmiPayments(payments);
+          setTotalMonthlyPayments(`₹${monthlyTotal.toLocaleString('en-IN')}`);
+          setUpcomingPayments(`₹${upcomingTotal.toLocaleString('en-IN')}`);
+          setPaidPayments(`₹${paidTotal.toLocaleString('en-IN')}`);
         }
       } catch (err) {
         console.error("Error fetching payment data:", err);
@@ -184,6 +173,7 @@ const Payments = () => {
           description: "Failed to load payment data",
           variant: "destructive"
         });
+        setEmiPayments([]);
       } finally {
         setLoading(false);
       }
@@ -196,21 +186,50 @@ const Payments = () => {
     setShowPaymentForm(true);
   };
 
-  const handleProcessPayment = () => {
-    toast({
-      title: "Payment Successful",
-      description: "Your payment has been processed successfully.",
-    });
-    setShowPaymentForm(false);
+  const handleProcessPayment = async () => {
+    // Find the first upcoming payment
+    const upcomingPayment = emiPayments.find(p => p.status === 'upcoming');
     
-    // Update the payment status
-    const updatedPayments = [...emiPayments];
-    const paymentIndex = updatedPayments.findIndex(p => p.id === 1);
-    if (paymentIndex !== -1) {
-      updatedPayments[paymentIndex].status = "paid";
-      updatedPayments[paymentIndex].description = "Home Loan EMI paid successfully";
-      setEmiPayments(updatedPayments);
+    if (upcomingPayment) {
+      try {
+        // Add a transaction to mark this payment as processed
+        const { error } = await supabase
+          .from('transactions')
+          .insert([{
+            name: upcomingPayment.name,
+            amount: parseFloat(upcomingPayment.amount.replace('₹', '').replace(/,/g, '')),
+            type: 'expense',
+            category: 'emi',
+            date: new Date().toISOString(),
+            user_id: userId
+          }]);
+          
+        if (error) throw error;
+        
+        // Update the UI
+        const updatedPayments = [...emiPayments];
+        const paymentIndex = updatedPayments.findIndex(p => p.id === upcomingPayment.id);
+        if (paymentIndex !== -1) {
+          updatedPayments[paymentIndex].status = 'paid';
+          updatedPayments[paymentIndex].description = `${upcomingPayment.name} paid successfully`;
+          setEmiPayments(updatedPayments);
+        }
+        
+        toast({
+          title: "Payment Successful",
+          description: "Your payment has been processed successfully.",
+        });
+      } catch (err) {
+        console.error("Error processing payment:", err);
+        toast({
+          title: "Error",
+          description: "Failed to process payment",
+          variant: "destructive"
+        });
+      }
     }
+    
+    setShowPaymentForm(false);
   };
   
   const handleChange = (field: string, value: string) => {
@@ -220,7 +239,7 @@ const Payments = () => {
     }));
   };
   
-  const handleAddPayment = () => {
+  const handleAddPayment = async () => {
     // Validate form
     if (!formData.name || !formData.amount || !formData.date) {
       toast({
@@ -231,31 +250,68 @@ const Payments = () => {
       return;
     }
     
-    // Add new payment
-    const newPayment: PaymentItem = {
-      id: `new-${emiPayments.length + 1}`,
-      name: formData.name,
-      amount: formData.amount.startsWith('₹') ? formData.amount : `₹${formData.amount}`,
-      date: formData.date,
-      status: "upcoming",
-      description: formData.description || `${formData.name} payment due soon`
-    };
-    
-    setEmiPayments([...emiPayments, newPayment]);
-    
-    // Reset form and close dialog
-    setFormData({
-      name: "",
-      amount: "",
-      date: "",
-      description: "",
-    });
-    setNewPaymentOpen(false);
-    
-    toast({
-      title: "Payment successfully added",
-      description: "Your new payment has been added to your schedule.",
-    });
+    try {
+      // Format the amount - remove ₹ symbol and commas if present
+      const cleanAmount = formData.amount.replace('₹', '').replace(/,/g, '');
+      const amount = parseFloat(cleanAmount);
+      
+      // Add to transactions table
+      const { data, error } = await supabase
+        .from('transactions')
+        .insert([{
+          name: formData.name,
+          amount: amount,
+          type: 'expense',
+          category: 'emi',
+          date: new Date(formData.date).toISOString(),
+          user_id: userId,
+        }])
+        .select();
+      
+      if (error) throw error;
+      
+      if (data && data[0]) {
+        // Add new payment to the state
+        const newPayment: PaymentItem = {
+          id: data[0].id,
+          name: formData.name,
+          amount: `₹${amount.toLocaleString('en-IN')}`,
+          date: new Date(formData.date).toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' }),
+          status: "upcoming",
+          description: formData.description || `${formData.name} payment due soon`
+        };
+        
+        setEmiPayments([newPayment, ...emiPayments]);
+        
+        // Update totals
+        const upcomingAmount = parseFloat(upcomingPayments.replace('₹', '').replace(/,/g, '')) + amount;
+        const totalAmount = parseFloat(totalMonthlyPayments.replace('₹', '').replace(/,/g, '')) + amount;
+        
+        setUpcomingPayments(`₹${upcomingAmount.toLocaleString('en-IN')}`);
+        setTotalMonthlyPayments(`₹${totalAmount.toLocaleString('en-IN')}`);
+      }
+      
+      // Reset form and close dialog
+      setFormData({
+        name: "",
+        amount: "",
+        date: "",
+        description: "",
+      });
+      setNewPaymentOpen(false);
+      
+      toast({
+        title: "Payment successfully added",
+        description: "Your new payment has been added to your schedule.",
+      });
+    } catch (err) {
+      console.error("Error adding payment:", err);
+      toast({
+        title: "Error",
+        description: "Failed to add payment",
+        variant: "destructive"
+      });
+    }
   };
 
   const getStatusIcon = (status: string) => {
@@ -318,9 +374,9 @@ const Payments = () => {
                   <Label htmlFor="date">Due Date</Label>
                   <Input
                     id="date"
+                    type="date"
                     value={formData.date}
                     onChange={(e) => handleChange("date", e.target.value)}
-                    placeholder="e.g. June 15, 2023"
                   />
                 </div>
                 
@@ -462,15 +518,29 @@ const Payments = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="payment-name">Payment</Label>
-                    <Input id="payment-name" value="Home Loan EMI" readOnly className="bg-muted" />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="payment-amount">Amount</Label>
-                    <Input id="payment-amount" value="₹12,500" readOnly className="bg-muted" />
-                  </div>
+                  {emiPayments.find(p => p.status === 'upcoming') && (
+                    <>
+                      <div>
+                        <Label htmlFor="payment-name">Payment</Label>
+                        <Input 
+                          id="payment-name" 
+                          value={emiPayments.find(p => p.status === 'upcoming')?.name || ""} 
+                          readOnly 
+                          className="bg-muted" 
+                        />
+                      </div>
+                      
+                      <div>
+                        <Label htmlFor="payment-amount">Amount</Label>
+                        <Input 
+                          id="payment-amount" 
+                          value={emiPayments.find(p => p.status === 'upcoming')?.amount || ""} 
+                          readOnly 
+                          className="bg-muted" 
+                        />
+                      </div>
+                    </>
+                  )}
                   
                   <div>
                     <Label htmlFor="payment-method">Payment Method</Label>

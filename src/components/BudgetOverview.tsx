@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Coffee, Home, ShoppingBag, Car, Utensils, PlusCircle } from "lucide-react";
@@ -41,6 +42,8 @@ const BudgetOverview = () => {
           .eq('user_id', userId);
           
         if (error) throw error;
+        
+        console.log("Fetched budget data in BudgetOverview:", data);
         
         if (data && data.length > 0) {
           // Format budget data

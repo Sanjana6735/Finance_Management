@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,6 +55,7 @@ const Budgets = () => {
         if (error) throw error;
         
         if (data) {
+          console.log("Fetched budget data:", data);
           const formattedBudgets = data.map(budget => ({
             id: budget.id,
             category: budget.category,
@@ -293,7 +295,6 @@ const Budgets = () => {
                             </div>
                             <Progress 
                               value={budget.percentage} 
-                              className="h-2" 
                               className={`h-2 ${budget.percentage > 90 ? "bg-destructive" : ""}`} 
                             />
                           </div>

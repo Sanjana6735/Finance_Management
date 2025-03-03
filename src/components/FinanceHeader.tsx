@@ -1,149 +1,95 @@
 
-import { CalendarDays } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useAuth } from "./AuthProvider";
+import { Card, CardContent } from "@/components/ui/card";
+import { Wallet, ArrowUpRight, TrendingUp } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useAuth } from "./AuthProvider";
 import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
 
-interface FinanceHeaderProps {
-  totalBalance?: string;
-}
-
-const FinanceHeader = ({ totalBalance: propsTotalBalance }: FinanceHeaderProps) => {
-  const { user, userId } = useAuth();
-  const [calculatedBalance, setCalculatedBalance] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [monthlyChange, setMonthlyChange] = useState<number | null>(null);
-  const { toast } = useToast();
+const FinanceHeader = () => {
+  const { user } = useAuth();
+  const [balance, setBalance] = useState<string | null>(null);
   
   useEffect(() => {
     const fetchTotalBalance = async () => {
-      if (!userId) return;
+      if (!user?.id) return;
       
-      setLoading(true);
       try {
         const { data, error } = await supabase
           .from('accounts')
           .select('balance')
-          .eq('user_id', userId);
-          
+          .eq('user_id', user.id);
+        
         if (error) throw error;
         
         if (data && data.length > 0) {
-          // Calculate total balance from all accounts
-          const total = data.reduce((sum, account) => sum + parseFloat(account.balance), 0);
-          // Format as INR
-          setCalculatedBalance(`₹${total.toLocaleString('en-IN')}`);
+          const totalBalance = data.reduce((sum, account) => {
+            return sum + parseFloat(account.balance);
+          }, 0);
           
-          // Calculate change for this month
-          const startOfMonth = new Date();
-          startOfMonth.setDate(1);
-          startOfMonth.setHours(0, 0, 0, 0);
-          
-          // Get transactions for this month
-          const { data: transactions, error: txError } = await supabase
-            .from('transactions')
-            .select('amount, type')
-            .eq('user_id', userId)
-            .gte('date', startOfMonth.toISOString());
-            
-          if (txError) throw txError;
-          
-          if (transactions && transactions.length > 0) {
-            // Calculate net change
-            const change = transactions.reduce((sum, tx) => {
-              const amount = parseFloat(tx.amount);
-              return tx.type === 'income' ? sum + amount : sum - amount;
-            }, 0);
-            
-            setMonthlyChange(change);
-          } else {
-            setMonthlyChange(0);
-          }
+          setBalance(`₹${totalBalance.toLocaleString('en-IN')}`);
         } else {
-          setCalculatedBalance("₹0");
-          setMonthlyChange(0);
+          setBalance("₹0");
         }
       } catch (err) {
         console.error("Error fetching total balance:", err);
-        setCalculatedBalance("₹0");
-        setMonthlyChange(0);
-        toast({
-          title: "Error",
-          description: "Failed to fetch account balance",
-          variant: "destructive"
-        });
-      } finally {
-        setLoading(false);
+        setBalance("₹0");
       }
     };
     
     fetchTotalBalance();
-  }, [userId, toast]);
+  }, [user]);
   
-  // Either use the calculated balance from the database or the prop
-  const displayBalance = loading ? 
-    "Loading..." : 
-    (calculatedBalance || "₹0");
-  
-  const username = user?.user_metadata?.username || user?.email?.split('@')[0] || "User";
-
-  const currentDate = new Date();
-  const monthName = currentDate.toLocaleString('default', { month: 'long' });
-  const year = currentDate.getFullYear();
-  const dateRange = `${monthName} 1 - ${monthName} ${new Date(year, currentDate.getMonth() + 1, 0).getDate()}, ${year}`;
-
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Welcome back, {username}! Here's your financial overview.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-9 gap-1">
-            <CalendarDays size={15} />
-            <span>{dateRange}</span>
-          </Button>
-          <Select defaultValue="all">
-            <SelectTrigger className="w-[130px] h-9">
-              <SelectValue placeholder="View" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Accounts</SelectItem>
-              <SelectItem value="personal">Personal</SelectItem>
-              <SelectItem value="business">Business</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="md:col-span-2">
+        <Card className="overflow-hidden">
+          <CardContent className="p-0">
+            <div className="relative">
+              <img 
+                src="/finance-header.jpg" 
+                alt="Finance Dashboard" 
+                className="w-full h-48 object-cover"
+                onError={(e) => {
+                  e.currentTarget.src = "https://images.unsplash.com/photo-1579621970588-a35d0e7ab9b6?auto=format&fit=crop&q=80&w=1200&ixlib=rb-4.0.3";
+                  e.currentTarget.style.height = "200px";
+                }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/70 flex flex-col justify-end p-6">
+                <div className="text-white">
+                  <h1 className="text-2xl font-bold">Welcome, {user?.user_metadata?.full_name || user?.email?.split('@')[0] || "User"}</h1>
+                  <p className="text-white/80 mt-1">Your financial dashboard at a glance</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
       
-      <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-xl p-6">
-        <p className="text-sm font-medium text-muted-foreground">Total Balance</p>
-        <h2 className="text-4xl font-bold mt-1">{displayBalance}</h2>
-        <div className="flex items-center gap-2 mt-2">
-          {monthlyChange !== null && (
-            <>
-              <span className={monthlyChange >= 0 ? "text-green-500 text-sm font-medium" : "text-red-500 text-sm font-medium"}>
-                {monthlyChange >= 0 ? "+" : ""}{`₹${Math.abs(monthlyChange).toLocaleString('en-IN')}`}
-              </span>
-              <span className="text-sm text-muted-foreground">this month</span>
-            </>
-          )}
-          {monthlyChange === null && !loading && (
-            <span className="text-sm text-muted-foreground">No transactions this month</span>
-          )}
-        </div>
+      <div>
+        <Card>
+          <CardContent className="p-6 flex flex-col h-full justify-center">
+            <div className="flex items-center justify-between">
+              <div className="rounded-full bg-primary/10 p-3">
+                <Wallet className="h-6 w-6 text-primary" />
+              </div>
+              <TrendingUp className="h-4 w-4 text-green-500" />
+            </div>
+            
+            <div className="mt-3">
+              <p className="text-sm text-muted-foreground">Total Balance</p>
+              <h2 className="text-3xl font-bold mt-1">
+                {balance || <span className="animate-pulse">...</span>}
+              </h2>
+              <div className="flex items-center mt-1">
+                <div className="flex items-center text-green-500 text-sm">
+                  <ArrowUpRight className="h-3 w-3 mr-1" />
+                  <span>4.3%</span>
+                </div>
+                <span className="text-xs text-muted-foreground ml-2">vs last month</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

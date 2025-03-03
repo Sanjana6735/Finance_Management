@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { useAuth } from "./AuthProvider";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface EmiBannerProps {
   nextPayment?: {
@@ -16,6 +17,7 @@ interface EmiBannerProps {
 
 const EmiBanner = ({ nextPayment }: EmiBannerProps) => {
   const { userId } = useAuth();
+  const { toast } = useToast();
   const [paymentData, setPaymentData] = useState<EmiBannerProps["nextPayment"] | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -28,40 +30,63 @@ const EmiBanner = ({ nextPayment }: EmiBannerProps) => {
       }
 
       try {
-        // This would normally fetch from a 'loan_payments' table
-        // For now, we'll check if the user has any accounts with negative balance
-        // which might indicate a loan
-        const { data: accounts, error } = await supabase
-          .from('accounts')
+        // First check if there are any transactions with EMI or loan categories
+        const { data: emiTransactions, error: transactionError } = await supabase
+          .from('transactions')
           .select('*')
           .eq('user_id', userId)
-          .lt('balance', 0)
-          .order('balance', { ascending: true })
+          .eq('category', 'emi')
+          .order('date', { ascending: true })
           .limit(1);
 
-        if (error) throw error;
+        if (transactionError) throw transactionError;
 
-        if (accounts && accounts.length > 0) {
-          // Calculate a fictional EMI based on the negative balance
-          const loan = accounts[0];
-          const loanAmount = Math.abs(parseFloat(loan.balance));
-          const emiAmount = (loanAmount * 0.05).toFixed(2); // 5% of loan as EMI
-          
-          // Next payment date is 1 month from now
-          const nextDate = new Date();
-          nextDate.setMonth(nextDate.getMonth() + 1);
-          
+        if (emiTransactions && emiTransactions.length > 0) {
+          const emiTransaction = emiTransactions[0];
           setPaymentData({
-            amount: `₹${parseFloat(emiAmount).toLocaleString('en-IN')}`,
-            date: nextDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
-            description: `EMI payment for ${loan.name}`
+            amount: `₹${parseFloat(emiTransaction.amount).toLocaleString('en-IN')}`,
+            date: new Date(emiTransaction.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+            description: emiTransaction.name
           });
         } else {
-          // No loans found
-          setPaymentData(null);
+          // Check for any accounts with negative balance (loans)
+          const { data: accounts, error } = await supabase
+            .from('accounts')
+            .select('*')
+            .eq('user_id', userId)
+            .lt('balance', 0)
+            .order('balance', { ascending: true })
+            .limit(1);
+
+          if (error) throw error;
+
+          if (accounts && accounts.length > 0) {
+            // Calculate a fictional EMI based on the negative balance
+            const loan = accounts[0];
+            const loanAmount = Math.abs(parseFloat(loan.balance));
+            const emiAmount = (loanAmount * 0.05).toFixed(2); // 5% of loan as EMI
+            
+            // Next payment date is 1 month from now
+            const nextDate = new Date();
+            nextDate.setMonth(nextDate.getMonth() + 1);
+            
+            setPaymentData({
+              amount: `₹${parseFloat(emiAmount).toLocaleString('en-IN')}`,
+              date: nextDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+              description: `EMI payment for ${loan.name}`
+            });
+          } else {
+            // No loans found
+            setPaymentData(null);
+          }
         }
       } catch (err) {
         console.error("Error fetching upcoming payments:", err);
+        toast({
+          title: "Error",
+          description: "Failed to load EMI data",
+          variant: "destructive" 
+        });
         setPaymentData(null);
       } finally {
         setLoading(false);
@@ -69,7 +94,7 @@ const EmiBanner = ({ nextPayment }: EmiBannerProps) => {
     };
 
     fetchUpcomingPayment();
-  }, [userId]);
+  }, [userId, toast]);
 
   // If no payment data is available and not loading, don't render the component
   if (!loading && !paymentData && !nextPayment) {
