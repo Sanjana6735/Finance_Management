@@ -51,134 +51,135 @@ const Payments = () => {
   }, []);
 
   // Fetch user's EMI payments 
-  useEffect(() => {
-    const fetchEmiPayments = async () => {
-      if (!userId) {
-        setLoading(false);
-        return;
-      }
+  const fetchEmiPayments = async () => {
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
 
-      setLoading(true);
-      try {
-        // First check for transactions marked as EMI/payments
-        const { data: emiTransactions, error: transactionError } = await supabase
-          .from('transactions')
-          .select('*')
-          .eq('user_id', userId)
-          .or('category.eq.emi,category.eq.loan,category.eq.payment')
-          .order('date', { ascending: false });
+    setLoading(true);
+    try {
+      // First check for transactions marked as EMI/payments
+      const { data: emiTransactions, error: transactionError } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', userId)
+        .or('category.eq.emi,category.eq.loan,category.eq.payment')
+        .order('date', { ascending: false });
 
-        if (transactionError) throw transactionError;
+      if (transactionError) throw transactionError;
 
-        const payments: PaymentItem[] = [];
-        let monthlyTotal = 0;
-        let upcomingTotal = 0;
-        let paidTotal = 0;
-        
-        // Create payments from transactions
-        if (emiTransactions && emiTransactions.length > 0) {
-          emiTransactions.forEach((transaction) => {
-            const transactionDate = new Date(transaction.date);
-            const now = new Date();
-            const status: 'upcoming' | 'paid' | 'missed' = 
-              transactionDate > now ? 'upcoming' : 
-              transaction.type === 'expense' ? 'paid' : 'missed';
-            
-            const amount = parseFloat(transaction.amount);
-            
-            payments.push({
-              id: transaction.id,
-              name: transaction.name,
-              amount: `₹${amount.toLocaleString('en-IN')}`,
-              date: transactionDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' }),
-              status,
-              description: status === 'upcoming' 
-                ? `${transaction.name} payment due in ${Math.floor((transactionDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))} days`
-                : status === 'paid' 
-                  ? `${transaction.name} paid successfully`
-                  : `${transaction.name} payment missed`
-            });
-            
-            monthlyTotal += amount;
-            if (status === 'upcoming') upcomingTotal += amount;
-            if (status === 'paid') paidTotal += amount;
+      const payments: PaymentItem[] = [];
+      let monthlyTotal = 0;
+      let upcomingTotal = 0;
+      let paidTotal = 0;
+      
+      // Create payments from transactions
+      if (emiTransactions && emiTransactions.length > 0) {
+        emiTransactions.forEach((transaction) => {
+          const transactionDate = new Date(transaction.date);
+          const now = new Date();
+          const status: 'upcoming' | 'paid' | 'missed' = 
+            transactionDate > now ? 'upcoming' : 
+            transaction.type === 'expense' ? 'paid' : 'missed';
+          
+          const amount = parseFloat(transaction.amount);
+          
+          payments.push({
+            id: transaction.id,
+            name: transaction.name,
+            amount: `₹${amount.toLocaleString('en-IN')}`,
+            date: transactionDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' }),
+            status,
+            description: status === 'upcoming' 
+              ? `${transaction.name} payment due in ${Math.floor((transactionDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))} days`
+              : status === 'paid' 
+                ? `${transaction.name} paid successfully`
+                : `${transaction.name} payment missed`
           });
           
-          setEmiPayments(payments);
-          setTotalMonthlyPayments(`₹${monthlyTotal.toLocaleString('en-IN')}`);
-          setUpcomingPayments(`₹${upcomingTotal.toLocaleString('en-IN')}`);
-          setPaidPayments(`₹${paidTotal.toLocaleString('en-IN')}`);
-        } else {
-          // Check if the user has any loan accounts (negative balance)
-          const { data: accounts, error: accountsError } = await supabase
-            .from('accounts')
-            .select('*')
-            .eq('user_id', userId)
-            .lt('balance', 0);
-
-          if (accountsError) throw accountsError;
-
-          // Generate synthetic payment data based on accounts with negative balance
-          if (accounts && accounts.length > 0) {
-            // Find any accounts with negative balance (loans)
-            const loanAccounts = accounts;
-            
-            // If there are loan accounts, create payment records for them
-            if (loanAccounts.length > 0) {
-              loanAccounts.forEach((loan, index) => {
-                const loanAmount = Math.abs(parseFloat(loan.balance));
-                const emiAmount = loanAmount * 0.05; // 5% of loan as EMI
-                
-                // Add an upcoming payment
-                const futureDate = new Date();
-                futureDate.setDate(futureDate.getDate() + (index * 3) + 5);
-                payments.push({
-                  id: `upcoming-${index}`,
-                  name: `${loan.name} EMI`,
-                  amount: `₹${emiAmount.toLocaleString('en-IN')}`,
-                  date: futureDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' }),
-                  status: 'upcoming',
-                  description: `${loan.name} EMI payment due in ${Math.floor((futureDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days`
-                });
-                upcomingTotal += emiAmount;
-                monthlyTotal += emiAmount;
-                
-                // Add a paid payment for history
-                const pastDate = new Date();
-                pastDate.setDate(pastDate.getDate() - (index * 5) - 10);
-                payments.push({
-                  id: `paid-${index}`,
-                  name: `${loan.name} EMI`,
-                  amount: `₹${emiAmount.toLocaleString('en-IN')}`,
-                  date: pastDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' }),
-                  status: 'paid',
-                  description: `${loan.name} EMI paid successfully`
-                });
-                paidTotal += emiAmount;
-                monthlyTotal += emiAmount;
-              });
-            }
-          }
-          
-          // Set data even if empty
-          setEmiPayments(payments);
-          setTotalMonthlyPayments(`₹${monthlyTotal.toLocaleString('en-IN')}`);
-          setUpcomingPayments(`₹${upcomingTotal.toLocaleString('en-IN')}`);
-          setPaidPayments(`₹${paidTotal.toLocaleString('en-IN')}`);
-        }
-      } catch (err) {
-        console.error("Error fetching payment data:", err);
-        toast({
-          title: "Error",
-          description: "Failed to load payment data",
-          variant: "destructive"
+          monthlyTotal += amount;
+          if (status === 'upcoming') upcomingTotal += amount;
+          if (status === 'paid') paidTotal += amount;
         });
-        setEmiPayments([]);
-      } finally {
-        setLoading(false);
-      }
-    };
+        
+        setEmiPayments(payments);
+        setTotalMonthlyPayments(`₹${monthlyTotal.toLocaleString('en-IN')}`);
+        setUpcomingPayments(`₹${upcomingTotal.toLocaleString('en-IN')}`);
+        setPaidPayments(`₹${paidTotal.toLocaleString('en-IN')}`);
+      } else {
+        // Check if the user has any loan accounts (negative balance)
+        const { data: accounts, error: accountsError } = await supabase
+          .from('accounts')
+          .select('*')
+          .eq('user_id', userId)
+          .lt('balance', 0);
 
+        if (accountsError) throw accountsError;
+
+        // Generate synthetic payment data based on accounts with negative balance
+        if (accounts && accounts.length > 0) {
+          // Find any accounts with negative balance (loans)
+          const loanAccounts = accounts;
+          
+          // If there are loan accounts, create payment records for them
+          if (loanAccounts.length > 0) {
+            loanAccounts.forEach((loan, index) => {
+              const loanAmount = Math.abs(parseFloat(loan.balance));
+              const emiAmount = loanAmount * 0.05; // 5% of loan as EMI
+              
+              // Add an upcoming payment
+              const futureDate = new Date();
+              futureDate.setDate(futureDate.getDate() + (index * 3) + 5);
+              payments.push({
+                id: `upcoming-${index}`,
+                name: `${loan.name} EMI`,
+                amount: `₹${emiAmount.toLocaleString('en-IN')}`,
+                date: futureDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' }),
+                status: 'upcoming',
+                description: `${loan.name} EMI payment due in ${Math.floor((futureDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days`
+              });
+              upcomingTotal += emiAmount;
+              monthlyTotal += emiAmount;
+              
+              // Add a paid payment for history
+              const pastDate = new Date();
+              pastDate.setDate(pastDate.getDate() - (index * 5) - 10);
+              payments.push({
+                id: `paid-${index}`,
+                name: `${loan.name} EMI`,
+                amount: `₹${emiAmount.toLocaleString('en-IN')}`,
+                date: pastDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' }),
+                status: 'paid',
+                description: `${loan.name} EMI paid successfully`
+              });
+              paidTotal += emiAmount;
+              monthlyTotal += emiAmount;
+            });
+          }
+        }
+        
+        // Set data even if empty
+        setEmiPayments(payments);
+        setTotalMonthlyPayments(`₹${monthlyTotal.toLocaleString('en-IN')}`);
+        setUpcomingPayments(`₹${upcomingTotal.toLocaleString('en-IN')}`);
+        setPaidPayments(`₹${paidTotal.toLocaleString('en-IN')}`);
+      }
+    } catch (err) {
+      console.error("Error fetching payment data:", err);
+      toast({
+        title: "Error",
+        description: "Failed to load payment data",
+        variant: "destructive"
+      });
+      setEmiPayments([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load payments on component mount
+  useEffect(() => {
     fetchEmiPayments();
   }, [userId, toast]);
 
@@ -199,7 +200,7 @@ const Payments = () => {
             name: upcomingPayment.name,
             amount: parseFloat(upcomingPayment.amount.replace('₹', '').replace(/,/g, '')),
             type: 'expense',
-            category: 'emi',
+            category: 'emi', // Using 'emi' as the category for all EMI payments
             date: new Date().toISOString(),
             user_id: userId
           }]);
@@ -219,6 +220,9 @@ const Payments = () => {
           title: "Payment Successful",
           description: "Your payment has been processed successfully.",
         });
+        
+        // Refresh the payments list
+        fetchEmiPayments();
       } catch (err) {
         console.error("Error processing payment:", err);
         toast({
@@ -255,40 +259,22 @@ const Payments = () => {
       const cleanAmount = formData.amount.replace('₹', '').replace(/,/g, '');
       const amount = parseFloat(cleanAmount);
       
-      // Add to transactions table
+      // Add to transactions table with the correct category
       const { data, error } = await supabase
         .from('transactions')
         .insert([{
           name: formData.name,
           amount: amount,
           type: 'expense',
-          category: 'emi',
+          category: 'emi', // Using 'emi' instead of previous values
           date: new Date(formData.date).toISOString(),
           user_id: userId,
         }])
         .select();
       
-      if (error) throw error;
-      
-      if (data && data[0]) {
-        // Add new payment to the state
-        const newPayment: PaymentItem = {
-          id: data[0].id,
-          name: formData.name,
-          amount: `₹${amount.toLocaleString('en-IN')}`,
-          date: new Date(formData.date).toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' }),
-          status: "upcoming",
-          description: formData.description || `${formData.name} payment due soon`
-        };
-        
-        setEmiPayments([newPayment, ...emiPayments]);
-        
-        // Update totals
-        const upcomingAmount = parseFloat(upcomingPayments.replace('₹', '').replace(/,/g, '')) + amount;
-        const totalAmount = parseFloat(totalMonthlyPayments.replace('₹', '').replace(/,/g, '')) + amount;
-        
-        setUpcomingPayments(`₹${upcomingAmount.toLocaleString('en-IN')}`);
-        setTotalMonthlyPayments(`₹${totalAmount.toLocaleString('en-IN')}`);
+      if (error) {
+        console.error("Insert error:", error);
+        throw error;
       }
       
       // Reset form and close dialog
@@ -304,11 +290,14 @@ const Payments = () => {
         title: "Payment successfully added",
         description: "Your new payment has been added to your schedule.",
       });
+      
+      // Refresh the payments list
+      fetchEmiPayments();
     } catch (err) {
       console.error("Error adding payment:", err);
       toast({
         title: "Error",
-        description: "Failed to add payment",
+        description: "Failed to add payment. Please try again.",
         variant: "destructive"
       });
     }

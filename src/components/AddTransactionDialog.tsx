@@ -21,7 +21,7 @@ interface AddTransactionDialogProps {
     name: string;
     amount: string;
     type: "expense" | "income";
-    category: "shopping" | "food" | "housing" | "transport" | "other";
+    category: string;
     date: string;
   }) => void;
 }
@@ -32,7 +32,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<"expense" | "income">("expense");
-  const [category, setCategory] = useState<"shopping" | "food" | "housing" | "transport" | "other">("other");
+  const [category, setCategory] = useState<string>("other");
   const [date, setDate] = useState<Date>(new Date());
   const [isScanning, setIsScanning] = useState(false);
   const [receipt, setReceipt] = useState<File | null>(null);
@@ -199,7 +199,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
             
             <div>
               <Label htmlFor="category">Category</Label>
-              <Select value={category} onValueChange={(value) => setCategory(value as "shopping" | "food" | "housing" | "transport" | "other")}>
+              <Select value={category} onValueChange={(value) => setCategory(value)}>
                 <SelectTrigger id="category" className="mt-1">
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
@@ -208,6 +208,8 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
                   <SelectItem value="food">Food & Dining</SelectItem>
                   <SelectItem value="housing">Housing</SelectItem>
                   <SelectItem value="transport">Transportation</SelectItem>
+                  <SelectItem value="emi">EMI Payment</SelectItem>
+                  <SelectItem value="loan">Loan</SelectItem>
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>

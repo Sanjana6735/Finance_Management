@@ -30,12 +30,13 @@ const EmiBanner = ({ nextPayment }: EmiBannerProps) => {
       }
 
       try {
-        // First check if there are any transactions with EMI or loan categories
+        // First check if there are any transactions with EMI category
         const { data: emiTransactions, error: transactionError } = await supabase
           .from('transactions')
           .select('*')
           .eq('user_id', userId)
           .eq('category', 'emi')
+          .gt('date', new Date().toISOString()) // Only future payments
           .order('date', { ascending: true })
           .limit(1);
 
@@ -95,11 +96,6 @@ const EmiBanner = ({ nextPayment }: EmiBannerProps) => {
 
     fetchUpcomingPayment();
   }, [userId, toast]);
-
-  // If no payment data is available and not loading, don't render the component
-  if (!loading && !paymentData && !nextPayment) {
-    return null;
-  }
 
   // Use provided nextPayment prop if available, otherwise use fetched data
   const displayPayment = nextPayment || paymentData;
