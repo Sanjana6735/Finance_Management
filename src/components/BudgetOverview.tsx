@@ -1,9 +1,8 @@
-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Coffee, Home, ShoppingBag, Car, Utensils, PlusCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
 import { useAuth } from "./AuthProvider";
 import { supabase } from "@/integrations/supabase/client";
@@ -148,7 +147,10 @@ const BudgetOverview = () => {
                   {budget.percentage > 90 ? "Over Budget" : `${budget.percentage.toFixed(0)}%`}
                 </Badge>
               </div>
-              <Progress value={budget.percentage} className="h-2" />
+              <Progress 
+                value={budget.percentage} 
+                className={`h-2 ${budget.percentage > 90 ? "bg-destructive" : ""}`} 
+              />
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">
                   ₹{budget.spent.toLocaleString('en-IN')} spent

@@ -1,10 +1,9 @@
-
 import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, PlusCircle, Pencil, Trash2 } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -295,7 +294,7 @@ const Budgets = () => {
                             <Progress 
                               value={budget.percentage} 
                               className="h-2" 
-                              indicatorClassName={budget.percentage > 90 ? "bg-destructive" : undefined} 
+                              className={`h-2 ${budget.percentage > 90 ? "bg-destructive" : ""}`} 
                             />
                           </div>
                         </div>
