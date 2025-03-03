@@ -38,47 +38,47 @@ const Budgets = () => {
   });
 
   // Fetch budget data
-  useEffect(() => {
-    const fetchBudgets = async () => {
-      if (!userId) {
-        setLoading(false);
-        return;
-      }
-      
-      setLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('budgets')
-          .select('*')
-          .eq('user_id', userId);
-          
-        if (error) throw error;
-        
-        if (data) {
-          console.log("Fetched budget data:", data);
-          const formattedBudgets = data.map(budget => ({
-            id: budget.id,
-            category: budget.category,
-            total: budget.total,
-            spent: budget.spent,
-            created_at: new Date(budget.created_at).toLocaleDateString('en-IN'),
-            percentage: (budget.spent / budget.total) * 100
-          }));
-          
-          setBudgets(formattedBudgets);
-        }
-      } catch (err) {
-        console.error("Error fetching budgets:", err);
-        toast({
-          title: "Error",
-          description: "Failed to load budget data",
-          variant: "destructive"
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchBudgets = async () => {
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
     
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('budgets')
+        .select('*')
+        .eq('user_id', userId);
+        
+      if (error) throw error;
+      
+      if (data) {
+        console.log("Fetched budget data:", data);
+        const formattedBudgets = data.map(budget => ({
+          id: budget.id,
+          category: budget.category,
+          total: budget.total,
+          spent: budget.spent,
+          created_at: new Date(budget.created_at).toLocaleDateString('en-IN'),
+          percentage: (budget.spent / budget.total) * 100
+        }));
+        
+        setBudgets(formattedBudgets);
+      }
+    } catch (err) {
+      console.error("Error fetching budgets:", err);
+      toast({
+        title: "Error",
+        description: "Failed to load budget data",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  useEffect(() => {
     fetchBudgets();
   }, [userId, toast]);
 
@@ -123,19 +123,8 @@ const Budgets = () => {
         description: `Your ${formData.category} budget has been created successfully.`
       });
       
-      // Add the new budget to the state
-      if (data && data[0]) {
-        const newBudget = {
-          id: data[0].id,
-          category: data[0].category,
-          total: data[0].total,
-          spent: data[0].spent,
-          created_at: new Date(data[0].created_at).toLocaleDateString('en-IN'),
-          percentage: 0
-        };
-        
-        setBudgets([...budgets, newBudget]);
-      }
+      // Fetch the updated budgets instead of manually adding to state
+      fetchBudgets();
       
       // Reset form data
       setFormData({
@@ -150,6 +139,34 @@ const Budgets = () => {
       toast({
         title: "Error",
         description: "Failed to add budget",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Delete budget handler
+  const handleDeleteBudget = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('budgets')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      // Update local state
+      setBudgets(budgets.filter(budget => budget.id !== id));
+
+      toast({
+        title: "Budget Deleted",
+        description: "The budget has been removed successfully"
+      });
+    } catch (err) {
+      console.error("Error deleting budget:", err);
+      toast({
+        title: "Error",
+        description: "Failed to delete budget",
         variant: "destructive"
       });
     }
@@ -277,7 +294,12 @@ const Budgets = () => {
                                 <Pencil size={14} className="mr-1" />
                                 Edit
                               </Button>
-                              <Button variant="outline" size="sm" className="text-destructive">
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="text-destructive"
+                                onClick={() => handleDeleteBudget(budget.id)}
+                              >
                                 <Trash2 size={14} className="mr-1" />
                                 Delete
                               </Button>
@@ -295,7 +317,7 @@ const Budgets = () => {
                             </div>
                             <Progress 
                               value={budget.percentage} 
-                              className={`h-2 ${budget.percentage > 90 ? "bg-destructive" : ""}`} 
+                              className={budget.percentage > 90 ? "bg-destructive" : ""} 
                             />
                           </div>
                         </div>

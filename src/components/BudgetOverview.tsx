@@ -1,7 +1,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Coffee, Home, ShoppingBag, Car, Utensils, PlusCircle } from "lucide-react";
+import { Coffee, Home, ShoppingBag, Car, Utensils, PlusCircle, Pencil, Briefcase, School, Shapes, Heart } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
@@ -26,6 +26,7 @@ const BudgetOverview = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  // Fetch budget data immediately when the component mounts and whenever userId changes
   useEffect(() => {
     const fetchBudgetData = async () => {
       if (!userId) {
@@ -94,8 +95,16 @@ const BudgetOverview = () => {
         return <Car size={16} />;
       case 'coffee':
         return <Coffee size={16} />;
+      case 'education':
+        return <School size={16} />;
+      case 'healthcare':
+        return <Heart size={16} />;
+      case 'entertainment':
+        return <Shapes size={16} />;
+      case 'personal':
+        return <Pencil size={16} />;
       default:
-        return <Utensils size={16} />;
+        return <Briefcase size={16} />;
     }
   };
 
@@ -152,7 +161,7 @@ const BudgetOverview = () => {
               </div>
               <Progress 
                 value={budget.percentage} 
-                className={`h-2 ${budget.percentage > 90 ? "bg-destructive" : ""}`} 
+                className={budget.percentage > 90 ? "bg-destructive" : ""} 
               />
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">
