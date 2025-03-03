@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
@@ -173,6 +172,41 @@ const TransactionList = () => {
     };
   }, [userId]);
 
+  // Function to update a budget when a transaction is added
+  const updateBudget = async (category: string, amount: number) => {
+    if (!userId || !category) return;
+    
+    try {
+      // First, find a budget that matches this category
+      const { data: budgets, error: budgetError } = await supabase
+        .from('budgets')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('category', category)
+        .order('created_at', { ascending: false })
+        .limit(1);
+        
+      if (budgetError) throw budgetError;
+      
+      // If a budget exists for this category, update its spent amount
+      if (budgets && budgets.length > 0) {
+        const budget = budgets[0];
+        const newSpent = parseFloat(budget.spent) + amount;
+        
+        const { error: updateError } = await supabase
+          .from('budgets')
+          .update({ spent: newSpent })
+          .eq('id', budget.id);
+          
+        if (updateError) throw updateError;
+        
+        console.log(`Budget for ${category} updated: ₹${newSpent}`);
+      }
+    } catch (err) {
+      console.error("Error updating budget:", err);
+    }
+  };
+
   // Function to add a new transaction to Supabase
   const handleAddTransaction = async (newTransaction: Omit<Transaction, "id">) => {
     if (!userId) {
@@ -191,6 +225,7 @@ const TransactionList = () => {
         numericAmount = numericAmount.substring(1);
       }
       numericAmount = numericAmount.replace(/,/g, '');
+      const parsedAmount = parseFloat(numericAmount);
       
       // Create a new transaction record in the database
       const { data, error } = await supabase
@@ -198,7 +233,7 @@ const TransactionList = () => {
         .insert([
           {
             name: newTransaction.name,
-            amount: parseFloat(numericAmount),
+            amount: parsedAmount,
             type: newTransaction.type,
             category: newTransaction.category,
             date: new Date().toISOString(),
@@ -224,6 +259,11 @@ const TransactionList = () => {
         
         // Add the new transaction to the beginning of the list
         setTransactions([formattedTransaction, ...transactions]);
+        
+        // If this is an expense, update the corresponding budget
+        if (newTransaction.type === 'expense') {
+          await updateBudget(newTransaction.category, parsedAmount);
+        }
         
         // Show success notification
         toast({

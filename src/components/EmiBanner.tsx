@@ -35,7 +35,7 @@ const EmiBanner = ({ nextPayment }: EmiBannerProps) => {
           .from('transactions')
           .select('*')
           .eq('user_id', userId)
-          .eq('category', 'emi')
+          .or('category.eq.emi,category.eq.loan,category.eq.payment')
           .gt('date', new Date().toISOString()) // Only future payments
           .order('date', { ascending: true })
           .limit(1);

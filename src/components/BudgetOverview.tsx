@@ -47,8 +47,56 @@ const BudgetOverview = () => {
         console.log("Fetched budget data in BudgetOverview:", data);
         
         if (data && data.length > 0) {
+          // Update spent amount for each budget by fetching related transactions
+          const updatedBudgets = await Promise.all(data.map(async (budget) => {
+            // Get all transactions for this category in the current month
+            const startOfMonth = new Date();
+            startOfMonth.setDate(1);
+            startOfMonth.setHours(0, 0, 0, 0);
+            
+            const { data: transactions, error: txError } = await supabase
+              .from('transactions')
+              .select('amount')
+              .eq('user_id', userId)
+              .eq('category', budget.category.toLowerCase())
+              .eq('type', 'expense')
+              .gte('date', startOfMonth.toISOString());
+              
+            if (txError) {
+              console.error("Error fetching transactions for budget:", txError);
+              return budget; // Return budget without updated spent amount
+            }
+            
+            // Calculate total spent from transactions
+            let totalSpent = 0;
+            if (transactions && transactions.length > 0) {
+              totalSpent = transactions.reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+            }
+            
+            // Update the budget with the spent amount
+            const { data: updatedBudget, error: updateError } = await supabase
+              .from('budgets')
+              .update({ spent: totalSpent })
+              .eq('id', budget.id)
+              .select()
+              .single();
+              
+            if (updateError) {
+              console.error("Error updating budget spent amount:", updateError);
+              return {
+                ...budget,
+                spent: totalSpent
+              };
+            }
+            
+            return updatedBudget || {
+              ...budget,
+              spent: totalSpent
+            };
+          }));
+          
           // Format budget data
-          const formattedBudgets: BudgetCategory[] = data.map(budget => {
+          const formattedBudgets: BudgetCategory[] = updatedBudgets.map(budget => {
             const icon = getBudgetIcon(budget.category);
             const percentage = (budget.spent / budget.total) * 100;
             
@@ -80,6 +128,13 @@ const BudgetOverview = () => {
     };
     
     fetchBudgetData();
+    
+    // Set up a refresh interval to update budget data periodically
+    const refreshInterval = setInterval(fetchBudgetData, 30000); // Refresh every 30 seconds
+    
+    return () => {
+      clearInterval(refreshInterval);
+    };
   }, [userId, toast]);
 
   // Helper function to get the appropriate icon for each budget category

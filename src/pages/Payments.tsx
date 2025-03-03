@@ -1,17 +1,22 @@
-
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import EmiBanner from "@/components/EmiBanner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, CalendarClock, Clock, Check, AlertCircle } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { useToast } from "@/hooks/use-toast";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useAuth } from "@/components/AuthProvider";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { CalendarDays, Download, Filter, Search, Plus, Clock, Check, AlertCircle } from "lucide-react";
+import { format, subDays } from "date-fns";
+import { DateRange } from "react-day-picker";
+import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { Input } from "@/components/ui/input";
+import AddTransactionDialog from "@/components/AddTransactionDialog";
+import { useToast } from "@/hooks/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Select as SelectComponent, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@/components/AuthProvider";
 
 interface PaymentItem {
   id: number | string;
@@ -533,7 +538,7 @@ const Payments = () => {
                   
                   <div>
                     <Label htmlFor="payment-method">Payment Method</Label>
-                    <Select defaultValue="credit-card">
+                    <SelectComponent defaultValue="credit-card">
                       <SelectTrigger id="payment-method">
                         <SelectValue placeholder="Select payment method" />
                       </SelectTrigger>
@@ -542,7 +547,7 @@ const Payments = () => {
                         <SelectItem value="bank">Savings Account (**** 5678)</SelectItem>
                         <SelectItem value="upi">UPI</SelectItem>
                       </SelectContent>
-                    </Select>
+                    </SelectComponent>
                   </div>
                   
                   <div className="flex gap-4 pt-4">
