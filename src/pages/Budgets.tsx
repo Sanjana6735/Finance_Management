@@ -80,6 +80,13 @@ const Budgets = () => {
   
   useEffect(() => {
     fetchBudgets();
+    
+    // Set up a refresh interval to check for new data periodically
+    const refreshInterval = setInterval(() => {
+      fetchBudgets();
+    }, 10000); // Refresh every 10 seconds
+    
+    return () => clearInterval(refreshInterval);
   }, [userId, toast]);
 
   // On component mount, add animation classes
@@ -400,6 +407,9 @@ const Budgets = () => {
           </div>
         )}
       </main>
+      <footer className="container mx-auto px-4 py-6 mt-8 border-t text-center text-muted-foreground">
+        <p>© 2025 Wealth Finance App. All rights reserved.</p>
+      </footer>
     </div>
   );
 };

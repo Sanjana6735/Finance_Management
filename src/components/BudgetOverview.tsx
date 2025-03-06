@@ -71,6 +71,7 @@ const BudgetOverview = () => {
             let totalSpent = 0;
             if (transactions && transactions.length > 0) {
               totalSpent = transactions.reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+              console.log(`Total spent for ${budget.category}: ${totalSpent}`);
             }
             
             // Update the budget with the spent amount
@@ -129,10 +130,19 @@ const BudgetOverview = () => {
     
     fetchBudgetData();
     
+    // Set up event listener for transaction updates
+    const handleTransactionUpdate = () => {
+      console.log("Transaction update detected, refreshing budget data");
+      fetchBudgetData();
+    };
+    
+    window.addEventListener('transaction-update', handleTransactionUpdate);
+    
     // Set up a refresh interval to update budget data periodically
     const refreshInterval = setInterval(fetchBudgetData, 30000); // Refresh every 30 seconds
     
     return () => {
+      window.removeEventListener('transaction-update', handleTransactionUpdate);
       clearInterval(refreshInterval);
     };
   }, [userId, toast]);

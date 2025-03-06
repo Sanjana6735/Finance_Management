@@ -1,5 +1,5 @@
 
-import { CalendarClock } from "lucide-react";
+import { Clock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
@@ -123,7 +123,7 @@ const EmiBanner = ({ nextPayment }: EmiBannerProps) => {
         <div className="flex flex-wrap md:flex-nowrap justify-between items-center gap-4">
           <div className="flex items-start gap-4">
             <div className="rounded-full bg-primary/10 p-3 text-primary">
-              <CalendarClock size={24} />
+              <Clock size={24} />
             </div>
             
             <div>

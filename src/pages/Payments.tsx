@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarDays, Download, Filter, Search, Plus, Clock, Check, AlertCircle } from "lucide-react";
+import { CalendarDays, Download, Filter, Search, Clock, Check, AlertCircle, Plus } from "lucide-react";
 import { format, subDays } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
@@ -335,7 +335,7 @@ const Payments = () => {
           <Dialog open={newPaymentOpen} onOpenChange={setNewPaymentOpen}>
             <DialogTrigger asChild>
               <Button className="gap-1">
-                <PlusCircle size={16} />
+                <Plus size={16} />
                 <span>Add New Payment</span>
               </Button>
             </DialogTrigger>
@@ -430,7 +430,7 @@ const Payments = () => {
                       className="mt-4"
                       onClick={() => setNewPaymentOpen(true)}
                     >
-                      <PlusCircle size={16} className="mr-2" />
+                      <Plus size={16} className="mr-2" />
                       Add Your First Payment
                     </Button>
                   </div>
@@ -440,7 +440,7 @@ const Payments = () => {
                       <div key={payment.id} className="flex justify-between items-center p-4 border rounded-lg">
                         <div className="flex items-center gap-3">
                           <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                            <CalendarClock size={20} className="text-primary" />
+                            <Clock size={20} className="text-primary" />
                           </div>
                           <div>
                             <p className="font-medium">{payment.name}</p>

@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ChevronDown, Menu, X, Home, PieChart, CreditCard, Wallet, Clock, Settings, Bell, Moon, Sun, User, LogOut } from "lucide-react";
 import { 
@@ -20,6 +20,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+
+interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  read: boolean;
+  createdAt: string;
+}
 
 const Navbar = () => {
   const isMobile = useIsMobile();
@@ -27,11 +36,80 @@ const Navbar = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    // Simulate notifications data
+    const fetchNotifications = () => {
+      const currentDate = new Date();
+      
+      const notificationsData: Notification[] = [
+        {
+          id: "1",
+          title: "Budget Reminder",
+          message: "Your Food budget is at 80% utilization",
+          read: false,
+          createdAt: new Date(currentDate.getTime() - 1000 * 60 * 30).toISOString()
+        },
+        {
+          id: "2",
+          title: "Account Update",
+          message: "Your account balance is below ₹5,000",
+          read: false,
+          createdAt: new Date(currentDate.getTime() - 1000 * 60 * 120).toISOString()
+        },
+        {
+          id: "3",
+          title: "Payment Due",
+          message: "EMI payment for Home Loan is due tomorrow",
+          read: true,
+          createdAt: new Date(currentDate.getTime() - 1000 * 60 * 60 * 24).toISOString()
+        }
+      ];
+      
+      setNotifications(notificationsData);
+      setUnreadCount(notificationsData.filter(n => !n.read).length);
+    };
+    
+    fetchNotifications();
+    
+    // Listen for custom events that trigger new notifications
+    const handleNewNotification = (event: CustomEvent) => {
+      const newNotification = event.detail;
+      setNotifications(prev => [newNotification, ...prev]);
+      setUnreadCount(prev => prev + 1);
+      
+      toast({
+        title: newNotification.title,
+        description: newNotification.message,
+      });
+    };
+    
+    window.addEventListener('new-notification' as any, handleNewNotification as EventListener);
+    
+    return () => {
+      window.removeEventListener('new-notification' as any, handleNewNotification as EventListener);
+    };
+  }, []);
 
   const toggleTheme = () => {
     const newTheme = theme === "light" ? "dark" : "light";
     setTheme(newTheme);
     document.documentElement.classList.toggle("dark");
+  };
+
+  const markAllAsRead = () => {
+    setNotifications(notifications.map(n => ({ ...n, read: true })));
+    setUnreadCount(0);
+  };
+
+  const markAsRead = (id: string) => {
+    setNotifications(notifications.map(n => 
+      n.id === id ? { ...n, read: true } : n
+    ));
+    setUnreadCount(prev => Math.max(0, prev - 1));
   };
 
   const handleSignOut = async () => {
@@ -57,6 +135,23 @@ const Navbar = () => {
       description: "Navigating to settings page",
     });
     navigate("/settings");
+  };
+
+  const formatNotificationTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffMins < 60) {
+      return `${diffMins} min${diffMins === 1 ? '' : 's'} ago`;
+    } else if (diffHours < 24) {
+      return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+    } else {
+      return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+    }
   };
 
   const NavLinks = () => (
@@ -108,14 +203,49 @@ const Navbar = () => {
             {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
           </Button>
           
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="rounded-full relative"
-          >
-            <Bell size={18} />
-            <span className="absolute top-0 right-0 w-2 h-2 bg-primary rounded-full"></span>
-          </Button>
+          <DropdownMenu open={notificationsOpen} onOpenChange={setNotificationsOpen}>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="rounded-full relative"
+              >
+                <Bell size={18} />
+                {unreadCount > 0 && (
+                  <span className="absolute top-0 right-0 w-4 h-4 bg-primary rounded-full flex items-center justify-center text-[10px] text-white font-semibold">{unreadCount}</span>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80 max-h-[400px] overflow-auto">
+              <DropdownMenuLabel className="flex justify-between items-center">
+                <span>Notifications</span>
+                {unreadCount > 0 && (
+                  <Button variant="ghost" size="sm" onClick={markAllAsRead} className="text-xs">
+                    Mark all as read
+                  </Button>
+                )}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {notifications.length === 0 ? (
+                <div className="py-4 text-center text-muted-foreground">
+                  No notifications
+                </div>
+              ) : (
+                notifications.map((notification) => (
+                  <DropdownMenuItem key={notification.id} className="flex flex-col items-start px-4 py-3 cursor-default" onClick={() => markAsRead(notification.id)}>
+                    <div className="flex items-start justify-between w-full">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${notification.read ? 'bg-gray-300' : 'bg-primary'}`}></div>
+                        <span className="font-medium">{notification.title}</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{formatNotificationTime(notification.createdAt)}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1 pl-4">{notification.message}</p>
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           
           {isMobile ? (
             <Sheet>

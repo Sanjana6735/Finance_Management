@@ -92,6 +92,59 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
         throw error;
       }
       
+      // Update account balance when a transaction is created
+      if (type === "expense") {
+        // For expenses, decrease the account balance
+        const { data: accounts, error: accountsError } = await supabase
+          .from('accounts')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: true })
+          .limit(1);
+
+        if (accountsError) {
+          console.error("Error fetching account:", accountsError);
+        } else if (accounts && accounts.length > 0) {
+          const account = accounts[0];
+          const newBalance = parseFloat(account.balance) - parseFloat(numericAmount);
+          
+          // Update the account balance
+          const { error: updateError } = await supabase
+            .from('accounts')
+            .update({ balance: newBalance })
+            .eq('id', account.id);
+            
+          if (updateError) {
+            console.error("Error updating account balance:", updateError);
+          }
+        }
+      } else if (type === "income") {
+        // For income, increase the account balance
+        const { data: accounts, error: accountsError } = await supabase
+          .from('accounts')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: true })
+          .limit(1);
+
+        if (accountsError) {
+          console.error("Error fetching account:", accountsError);
+        } else if (accounts && accounts.length > 0) {
+          const account = accounts[0];
+          const newBalance = parseFloat(account.balance) + parseFloat(numericAmount);
+          
+          // Update the account balance
+          const { error: updateError } = await supabase
+            .from('accounts')
+            .update({ balance: newBalance })
+            .eq('id', account.id);
+            
+          if (updateError) {
+            console.error("Error updating account balance:", updateError);
+          }
+        }
+      }
+      
       onAddTransaction({
         name,
         amount: formattedAmount,
@@ -111,6 +164,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
       // Close dialog
       onOpenChange(false);
       
+      // Show notification
       toast({
         title: "Transaction added",
         description: "Your transaction has been successfully added",

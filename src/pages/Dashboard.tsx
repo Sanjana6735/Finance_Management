@@ -181,6 +181,9 @@ const Dashboard = () => {
           <TransactionList />
         </div>
       </main>
+      <footer className="container mx-auto px-4 py-6 mt-8 border-t text-center text-muted-foreground">
+        <p>© 2025 Wealth Finance App. All rights reserved.</p>
+      </footer>
     </div>
   );
 };

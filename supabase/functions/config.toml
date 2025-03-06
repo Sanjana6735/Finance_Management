@@ -1,0 +1,8 @@
+
+project_id = "zycfmehporlshbcpruvr"
+
+[functions.budget-notifications]
+verify_jwt = true
+
+[functions.budget-cron]
+verify_jwt = false
