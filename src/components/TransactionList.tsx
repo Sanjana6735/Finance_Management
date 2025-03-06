@@ -5,11 +5,11 @@ import {
   Coffee, 
   Home, 
   Car, 
-  Utensils, 
+  Heart, 
   Plus,
   Loader2,
   Briefcase,
-  Book,
+  School,
   Film,
   User,
   DollarSign
@@ -57,7 +57,7 @@ const formatAmount = (amount: number) => {
 };
 
 const getCategoryIcon = (category: string) => {
-  switch (category) {
+  switch (category.toLowerCase()) {
     case "shopping":
       return <ShoppingBag size={16} />;
     case "food":
@@ -67,17 +67,17 @@ const getCategoryIcon = (category: string) => {
     case "transport":
       return <Car size={16} />;
     case "healthcare":
-      return <Utensils size={16} />;
+      return <Heart size={16} />;
     case "education":
-      return <Book size={16} />;
+      return <School size={16} />;
     case "entertainment":
       return <Film size={16} />;
     case "personal":
       return <User size={16} />;
     case "other":
-      return <DollarSign size={16} />;
+      return <Briefcase size={16} />;
     default:
-      return <Utensils size={16} />;
+      return <DollarSign size={16} />;
   }
 };
 
@@ -115,7 +115,6 @@ const TransactionList = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch transactions from Supabase
   const fetchTransactions = async () => {
     if (!userId) {
       setIsLoading(false);
@@ -137,7 +136,6 @@ const TransactionList = () => {
       }
       
       if (data) {
-        // Transform the data to match our Transaction interface
         const formattedTransactions = data.map(item => ({
           id: item.id,
           name: item.name,
@@ -162,37 +160,10 @@ const TransactionList = () => {
     }
   };
 
-  // Initial fetch on component mount
-  useEffect(() => {
-    if (userId) {
-      fetchTransactions();
-    }
-    
-    // Set up listener for download event
-    const handleDownloadEvent = () => {
-      handleDownload();
-    };
-    
-    // Set up listener for refresh event
-    const handleRefreshEvent = () => {
-      fetchTransactions();
-    };
-    
-    window.addEventListener('download-transactions', handleDownloadEvent);
-    window.addEventListener('refresh-transactions', handleRefreshEvent);
-    
-    return () => {
-      window.removeEventListener('download-transactions', handleDownloadEvent);
-      window.removeEventListener('refresh-transactions', handleRefreshEvent);
-    };
-  }, [userId]);
-
-  // Function to update a budget when a transaction is added
   const updateBudget = async (category: string, amount: number) => {
     if (!userId || !category) return;
     
     try {
-      // First, find a budget that matches this category
       const { data: budgets, error: budgetError } = await supabase
         .from('budgets')
         .select('*')
@@ -203,7 +174,6 @@ const TransactionList = () => {
         
       if (budgetError) throw budgetError;
       
-      // If a budget exists for this category, update its spent amount
       if (budgets && budgets.length > 0) {
         const budget = budgets[0];
         const newSpent = parseFloat(budget.spent) + amount;
@@ -217,7 +187,6 @@ const TransactionList = () => {
         
         console.log(`Budget for ${category} updated: ₹${newSpent}`);
         
-        // Trigger an event to refresh budget displays
         const event = new CustomEvent('budget-update');
         window.dispatchEvent(event);
       }
@@ -226,7 +195,6 @@ const TransactionList = () => {
     }
   };
 
-  // Function to add a new transaction to Supabase
   const handleAddTransaction = async (newTransaction: Omit<Transaction, "id">) => {
     if (!userId) {
       toast({
@@ -238,7 +206,6 @@ const TransactionList = () => {
     }
 
     try {
-      // Extract the numeric amount from the formatted string
       let numericAmount = newTransaction.amount;
       if (numericAmount.startsWith('₹')) {
         numericAmount = numericAmount.substring(1);
@@ -246,7 +213,6 @@ const TransactionList = () => {
       numericAmount = numericAmount.replace(/,/g, '');
       const parsedAmount = parseFloat(numericAmount);
       
-      // Create a new transaction record in the database
       const { data, error } = await supabase
         .from('transactions')
         .insert([
@@ -266,7 +232,6 @@ const TransactionList = () => {
       }
       
       if (data && data.length > 0) {
-        // Format the new transaction for display
         const formattedTransaction = {
           id: data[0].id,
           name: data[0].name,
@@ -276,24 +241,19 @@ const TransactionList = () => {
           date: formatDate(data[0].date)
         };
         
-        // Add the new transaction to the beginning of the list
         setTransactions([formattedTransaction, ...transactions]);
         
-        // If this is an expense, update the corresponding budget
         if (newTransaction.type === 'expense') {
           await updateBudget(newTransaction.category, parsedAmount);
         }
         
-        // Update account balance
         await updateAccountBalance(parsedAmount, newTransaction.type);
         
-        // Show success notification
         toast({
           title: "Transaction added",
           description: `${newTransaction.name} has been added to your transactions.`,
         });
         
-        // Create a notification about the transaction
         await supabase
           .from('notifications')
           .insert({
@@ -303,7 +263,6 @@ const TransactionList = () => {
             read: false
           });
         
-        // Dispatch a custom event to notify other components
         const event = new CustomEvent('transaction-update');
         window.dispatchEvent(event);
       }
@@ -321,7 +280,6 @@ const TransactionList = () => {
     if (!userId) return;
     
     try {
-      // Fetch all accounts for the user
       const { data: accounts, error: accountsError } = await supabase
         .from('accounts')
         .select('*')
@@ -330,7 +288,6 @@ const TransactionList = () => {
       if (accountsError) throw accountsError;
       
       if (accounts && accounts.length > 0) {
-        // For simplicity, update the first account
         const account = accounts[0];
         let newBalance = parseFloat(account.balance);
         
@@ -340,7 +297,6 @@ const TransactionList = () => {
           newBalance += amount;
         }
         
-        // Update the account balance
         const { error: updateError } = await supabase
           .from('accounts')
           .update({ balance: newBalance })
@@ -356,7 +312,6 @@ const TransactionList = () => {
   };
 
   const handleDownload = () => {
-    // Create CSV content
     const headers = ["Id", "Name", "Amount", "Type", "Category", "Date"];
     const csvContent = [
       headers.join(","),
@@ -372,7 +327,6 @@ const TransactionList = () => {
       )
     ].join("\n");
     
-    // Create download link
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -388,7 +342,6 @@ const TransactionList = () => {
     });
   };
 
-  // Apply filters to transactions
   useEffect(() => {
     const handleFilterEvent = (event: CustomEvent) => {
       if (!userId) return;
@@ -406,8 +359,6 @@ const TransactionList = () => {
       }
       
       if (filters.account && filters.account !== 'all') {
-        // If we had account_id in the transactions table, we'd filter by it here
-        // query = query.eq('account_id', filters.account);
       }
       
       if (filters.category && filters.category !== 'all') {
@@ -458,7 +409,28 @@ const TransactionList = () => {
     };
   }, [userId, toast]);
 
-  // Show loading state
+  useEffect(() => {
+    if (userId) {
+      fetchTransactions();
+    }
+    
+    const handleDownloadEvent = () => {
+      handleDownload();
+    };
+    
+    const handleRefreshEvent = () => {
+      fetchTransactions();
+    };
+    
+    window.addEventListener('download-transactions', handleDownloadEvent);
+    window.addEventListener('refresh-transactions', handleRefreshEvent);
+    
+    return () => {
+      window.removeEventListener('download-transactions', handleDownloadEvent);
+      window.removeEventListener('refresh-transactions', handleRefreshEvent);
+    };
+  }, [userId]);
+
   if (isLoading && transactions.length === 0) {
     return (
       <Card>
@@ -492,7 +464,6 @@ const TransactionList = () => {
     );
   }
 
-  // Show error state
   if (error && transactions.length === 0) {
     return (
       <Card>

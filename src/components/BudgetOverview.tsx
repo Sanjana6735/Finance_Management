@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Coffee, Home, ShoppingBag, Car, Utensils, PlusCircle, Pencil, Briefcase, School, Shapes, Heart } from "lucide-react";
+import { Coffee, Home, ShoppingBag, Car, School, PlusCircle, Pencil, Briefcase, Film, Heart, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
@@ -157,23 +157,21 @@ const BudgetOverview = () => {
   const getBudgetIcon = (category: string) => {
     switch (category.toLowerCase()) {
       case 'food':
-        return <Utensils size={16} />;
+        return <Coffee size={16} />;
       case 'housing':
         return <Home size={16} />;
       case 'shopping':
         return <ShoppingBag size={16} />;
       case 'transport':
         return <Car size={16} />;
-      case 'coffee':
-        return <Coffee size={16} />;
       case 'education':
         return <School size={16} />;
       case 'healthcare':
         return <Heart size={16} />;
       case 'entertainment':
-        return <Shapes size={16} />;
+        return <Film size={16} />;
       case 'personal':
-        return <Pencil size={16} />;
+        return <User size={16} />;
       default:
         return <Briefcase size={16} />;
     }
