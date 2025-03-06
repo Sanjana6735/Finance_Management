@@ -7,7 +7,12 @@ import {
   Car, 
   Utensils, 
   Plus,
-  Loader2
+  Loader2,
+  Briefcase,
+  Book,
+  Film,
+  User,
+  DollarSign
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -22,7 +27,7 @@ interface Transaction {
   name: string;
   amount: string;
   type: "expense" | "income";
-  category: "shopping" | "food" | "housing" | "transport" | "other";
+  category: string;
   date: string;
 }
 
@@ -51,7 +56,7 @@ const formatAmount = (amount: number) => {
   }).format(amount);
 };
 
-const getCategoryIcon = (category: Transaction["category"]) => {
+const getCategoryIcon = (category: string) => {
   switch (category) {
     case "shopping":
       return <ShoppingBag size={16} />;
@@ -61,6 +66,16 @@ const getCategoryIcon = (category: Transaction["category"]) => {
       return <Home size={16} />;
     case "transport":
       return <Car size={16} />;
+    case "healthcare":
+      return <Utensils size={16} />;
+    case "education":
+      return <Book size={16} />;
+    case "entertainment":
+      return <Film size={16} />;
+    case "personal":
+      return <User size={16} />;
+    case "other":
+      return <DollarSign size={16} />;
     default:
       return <Utensils size={16} />;
   }
@@ -128,7 +143,7 @@ const TransactionList = () => {
           name: item.name,
           amount: formatAmount(Number(item.amount)),
           type: item.type as "expense" | "income",
-          category: item.category as "shopping" | "food" | "housing" | "transport" | "other",
+          category: item.category,
           date: formatDate(item.date)
         }));
         

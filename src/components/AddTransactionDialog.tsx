@@ -32,7 +32,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<"expense" | "income">("expense");
-  const [category, setCategory] = useState<string>("other");
+  const [category, setCategory] = useState<string>("shopping");
   const [date, setDate] = useState<Date>(new Date());
   const [isScanning, setIsScanning] = useState(false);
   const [receipt, setReceipt] = useState<File | null>(null);
@@ -157,7 +157,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
       setName("");
       setAmount("");
       setType("expense");
-      setCategory("other");
+      setCategory("shopping");
       setDate(new Date());
       setReceipt(null);
       
@@ -266,7 +266,6 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
                   <SelectItem value="education">Education</SelectItem>
                   <SelectItem value="entertainment">Entertainment</SelectItem>
                   <SelectItem value="personal">Personal</SelectItem>
-                  <SelectItem value="emi">EMI Payment</SelectItem>
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>

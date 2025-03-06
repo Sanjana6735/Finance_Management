@@ -202,9 +202,13 @@ const Transactions = () => {
                   <SelectContent>
                     <SelectItem value="all">All Categories</SelectItem>
                     <SelectItem value="shopping">Shopping</SelectItem>
-                    <SelectItem value="food">Food & Dining</SelectItem>
-                    <SelectItem value="transport">Transportation</SelectItem>
+                    <SelectItem value="food">Food</SelectItem>
                     <SelectItem value="housing">Housing</SelectItem>
+                    <SelectItem value="transport">Transport</SelectItem>
+                    <SelectItem value="healthcare">Healthcare</SelectItem>
+                    <SelectItem value="education">Education</SelectItem>
+                    <SelectItem value="entertainment">Entertainment</SelectItem>
+                    <SelectItem value="personal">Personal</SelectItem>
                     <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>
