@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -189,7 +188,7 @@ const Budgets = () => {
     { value: "Healthcare", label: "Healthcare" },
     { value: "Education", label: "Education" },
     { value: "Personal", label: "Personal" },
-    { value: "Savings", label: "Savings" },
+    { value: "EMI", label: "EMI Payment" },
     { value: "Other", label: "Other" }
   ];
 

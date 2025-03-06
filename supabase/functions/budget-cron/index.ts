@@ -49,13 +49,17 @@ serve(async (req) => {
           continue;
         }
         
-        // In a real implementation, you would send an email here
-        // For this example, we'll just log it
+        if (!user || !user.user || !user.user.email) {
+          console.error(`No valid user email found for budget ${budget.id}`);
+          continue;
+        }
+
+        // Determine notification type based on percentage
         const notificationType = percentage >= 90 ? "critical" : "warning";
-        console.log(`Would send ${notificationType} email to ${user?.user?.email || 'user'} about ${budget.category} budget at ${percentage.toFixed(0)}%`);
+        console.log(`Sending ${notificationType} email to ${user.user.email} about ${budget.category} budget at ${percentage.toFixed(0)}%`);
         
-        // For testing, let's create a notification record
-        await supabaseClient
+        // Create a notification record
+        const { data: notification, error: notifError } = await supabaseClient
           .from('notifications')
           .insert({
             user_id: budget.user_id,
@@ -64,6 +68,36 @@ serve(async (req) => {
             read: false
           })
           .select();
+          
+        if (notifError) {
+          console.error(`Error creating notification for budget ${budget.id}:`, notifError);
+        } else {
+          console.log(`Notification created: ${JSON.stringify(notification)}`);
+        }
+
+        // Send email via our send-budget-alert function
+        try {
+          const emailResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-budget-alert`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+            },
+            body: JSON.stringify({
+              userId: budget.user_id,
+              userEmail: user.user.email,
+              categoryName: budget.category,
+              currentAmount: budget.spent,
+              totalBudget: budget.total,
+              percentageUsed: percentage
+            })
+          });
+
+          const emailResult = await emailResponse.json();
+          console.log(`Email sending result: ${JSON.stringify(emailResult)}`);
+        } catch (emailError) {
+          console.error(`Error sending email for budget ${budget.id}:`, emailError);
+        }
       }
     }
     

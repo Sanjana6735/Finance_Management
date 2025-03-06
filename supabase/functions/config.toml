@@ -6,3 +6,6 @@ verify_jwt = true
 
 [functions.budget-cron]
 verify_jwt = false
+
+[functions.send-budget-alert]
+verify_jwt = false

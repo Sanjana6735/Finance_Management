@@ -1,4 +1,3 @@
-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Coffee, Home, ShoppingBag, Car, Utensils, PlusCircle, Pencil, Briefcase, School, Shapes, Heart } from "lucide-react";
@@ -26,7 +25,7 @@ const BudgetOverview = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Fetch budget data immediately when the component mounts and whenever userId changes
+  // Fetch budget data 
   useEffect(() => {
     const fetchBudgetData = async () => {
       if (!userId) {
@@ -130,19 +129,26 @@ const BudgetOverview = () => {
     
     fetchBudgetData();
     
-    // Set up event listener for transaction updates
+    // Set up event listeners
     const handleTransactionUpdate = () => {
       console.log("Transaction update detected, refreshing budget data");
       fetchBudgetData();
     };
     
+    const handleBudgetUpdate = () => {
+      console.log("Budget update detected, refreshing budget data");
+      fetchBudgetData();
+    };
+    
     window.addEventListener('transaction-update', handleTransactionUpdate);
+    window.addEventListener('budget-update', handleBudgetUpdate);
     
     // Set up a refresh interval to update budget data periodically
     const refreshInterval = setInterval(fetchBudgetData, 30000); // Refresh every 30 seconds
     
     return () => {
       window.removeEventListener('transaction-update', handleTransactionUpdate);
+      window.removeEventListener('budget-update', handleBudgetUpdate);
       clearInterval(refreshInterval);
     };
   }, [userId, toast]);

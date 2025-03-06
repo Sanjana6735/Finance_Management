@@ -201,6 +201,10 @@ const TransactionList = () => {
         if (updateError) throw updateError;
         
         console.log(`Budget for ${category} updated: ₹${newSpent}`);
+        
+        // Trigger an event to refresh budget displays
+        const event = new CustomEvent('budget-update');
+        window.dispatchEvent(event);
       }
     } catch (err) {
       console.error("Error updating budget:", err);
@@ -265,11 +269,28 @@ const TransactionList = () => {
           await updateBudget(newTransaction.category, parsedAmount);
         }
         
+        // Update account balance
+        await updateAccountBalance(parsedAmount, newTransaction.type);
+        
         // Show success notification
         toast({
           title: "Transaction added",
           description: `${newTransaction.name} has been added to your transactions.`,
         });
+        
+        // Create a notification about the transaction
+        await supabase
+          .from('notifications')
+          .insert({
+            user_id: userId,
+            title: `New ${newTransaction.type}: ${newTransaction.name}`,
+            message: `You have ${newTransaction.type === 'expense' ? 'spent' : 'received'} ${newTransaction.amount} on ${newTransaction.name}`,
+            read: false
+          });
+        
+        // Dispatch a custom event to notify other components
+        const event = new CustomEvent('transaction-update');
+        window.dispatchEvent(event);
       }
     } catch (err) {
       console.error("Error adding transaction:", err);
@@ -278,6 +299,44 @@ const TransactionList = () => {
         description: "Failed to add transaction. Please try again later.",
         variant: "destructive",
       });
+    }
+  };
+
+  const updateAccountBalance = async (amount: number, type: string) => {
+    if (!userId) return;
+    
+    try {
+      // Fetch all accounts for the user
+      const { data: accounts, error: accountsError } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('user_id', userId);
+        
+      if (accountsError) throw accountsError;
+      
+      if (accounts && accounts.length > 0) {
+        // For simplicity, update the first account
+        const account = accounts[0];
+        let newBalance = parseFloat(account.balance);
+        
+        if (type === 'expense') {
+          newBalance -= amount;
+        } else {
+          newBalance += amount;
+        }
+        
+        // Update the account balance
+        const { error: updateError } = await supabase
+          .from('accounts')
+          .update({ balance: newBalance })
+          .eq('id', account.id);
+          
+        if (updateError) throw updateError;
+        
+        console.log(`Account ${account.name} balance updated to: ₹${newBalance}`);
+      }
+    } catch (err) {
+      console.error("Error updating account balance:", err);
     }
   };
 

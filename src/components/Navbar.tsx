@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ChevronDown, Menu, X, Home, PieChart, CreditCard, Wallet, Clock, Settings, Bell, Moon, Sun, User, LogOut } from "lucide-react";
@@ -27,7 +26,8 @@ interface Notification {
   title: string;
   message: string;
   read: boolean;
-  createdAt: string;
+  created_at?: string;
+  createdAt?: string;
 }
 
 const Navbar = () => {
@@ -39,60 +39,60 @@ const Navbar = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const { userId } = useAuth();
 
   useEffect(() => {
-    // Simulate notifications data
-    const fetchNotifications = () => {
-      const currentDate = new Date();
-      
-      const notificationsData: Notification[] = [
-        {
-          id: "1",
-          title: "Budget Reminder",
-          message: "Your Food budget is at 80% utilization",
-          read: false,
-          createdAt: new Date(currentDate.getTime() - 1000 * 60 * 30).toISOString()
-        },
-        {
-          id: "2",
-          title: "Account Update",
-          message: "Your account balance is below ₹5,000",
-          read: false,
-          createdAt: new Date(currentDate.getTime() - 1000 * 60 * 120).toISOString()
-        },
-        {
-          id: "3",
-          title: "Payment Due",
-          message: "EMI payment for Home Loan is due tomorrow",
-          read: true,
-          createdAt: new Date(currentDate.getTime() - 1000 * 60 * 60 * 24).toISOString()
+    if (!userId) return;
+    
+    const fetchNotifications = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false });
+          
+        if (error) throw error;
+        
+        if (data) {
+          setNotifications(data);
+          setUnreadCount(data.filter(n => !n.read).length);
         }
-      ];
-      
-      setNotifications(notificationsData);
-      setUnreadCount(notificationsData.filter(n => !n.read).length);
+      } catch (err) {
+        console.error("Error fetching notifications:", err);
+      }
     };
     
     fetchNotifications();
     
-    // Listen for custom events that trigger new notifications
-    const handleNewNotification = (event: CustomEvent) => {
-      const newNotification = event.detail;
-      setNotifications(prev => [newNotification, ...prev]);
-      setUnreadCount(prev => prev + 1);
+    // Set up a subscription for new notifications
+    const notificationsChannel = supabase
+      .channel('public:notifications')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${userId}`
+      }, (payload) => {
+        const newNotification = payload.new as Notification;
+        setNotifications(prev => [newNotification, ...prev]);
+        setUnreadCount(prev => prev + 1);
+        
+        toast({
+          title: newNotification.title,
+          description: newNotification.message,
+        });
+      })
+      .subscribe();
       
-      toast({
-        title: newNotification.title,
-        description: newNotification.message,
-      });
-    };
-    
-    window.addEventListener('new-notification' as any, handleNewNotification as EventListener);
+    // Refresh notifications periodically
+    const interval = setInterval(fetchNotifications, 30000);
     
     return () => {
-      window.removeEventListener('new-notification' as any, handleNewNotification as EventListener);
+      supabase.removeChannel(notificationsChannel);
+      clearInterval(interval);
     };
-  }, []);
+  }, [userId, toast]);
 
   const toggleTheme = () => {
     const newTheme = theme === "light" ? "dark" : "light";
@@ -100,16 +100,41 @@ const Navbar = () => {
     document.documentElement.classList.toggle("dark");
   };
 
-  const markAllAsRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })));
-    setUnreadCount(0);
+  const markAllAsRead = async () => {
+    if (!userId) return;
+    
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('user_id', userId)
+        .eq('read', false);
+        
+      if (error) throw error;
+      
+      setNotifications(notifications.map(n => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch (err) {
+      console.error("Error marking notifications as read:", err);
+    }
   };
 
-  const markAsRead = (id: string) => {
-    setNotifications(notifications.map(n => 
-      n.id === id ? { ...n, read: true } : n
-    ));
-    setUnreadCount(prev => Math.max(0, prev - 1));
+  const markAsRead = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('id', id);
+        
+      if (error) throw error;
+      
+      setNotifications(notifications.map(n => 
+        n.id === id ? { ...n, read: true } : n
+      ));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+    }
   };
 
   const handleSignOut = async () => {
@@ -238,7 +263,9 @@ const Navbar = () => {
                         <div className={`w-2 h-2 rounded-full ${notification.read ? 'bg-gray-300' : 'bg-primary'}`}></div>
                         <span className="font-medium">{notification.title}</span>
                       </div>
-                      <span className="text-xs text-muted-foreground">{formatNotificationTime(notification.createdAt)}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatNotificationTime(notification.created_at || notification.createdAt || new Date().toISOString())}
+                      </span>
                     </div>
                     <p className="text-sm text-muted-foreground mt-1 pl-4">{notification.message}</p>
                   </DropdownMenuItem>

@@ -1,6 +1,5 @@
-
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -259,11 +258,14 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="shopping">Shopping</SelectItem>
-                  <SelectItem value="food">Food & Dining</SelectItem>
+                  <SelectItem value="food">Food</SelectItem>
                   <SelectItem value="housing">Housing</SelectItem>
-                  <SelectItem value="transport">Transportation</SelectItem>
+                  <SelectItem value="transport">Transport</SelectItem>
+                  <SelectItem value="healthcare">Healthcare</SelectItem>
+                  <SelectItem value="education">Education</SelectItem>
+                  <SelectItem value="entertainment">Entertainment</SelectItem>
+                  <SelectItem value="personal">Personal</SelectItem>
                   <SelectItem value="emi">EMI Payment</SelectItem>
-                  <SelectItem value="loan">Loan</SelectItem>
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>
