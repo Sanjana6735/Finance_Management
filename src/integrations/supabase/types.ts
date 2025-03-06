@@ -39,6 +39,36 @@ export type Database = {
         }
         Relationships: []
       }
+      budget_alert_logs: {
+        Row: {
+          budget_id: string
+          category: string
+          created_at: string | null
+          email_sent_to: string
+          id: string
+          percentage_used: number
+          user_id: string
+        }
+        Insert: {
+          budget_id: string
+          category: string
+          created_at?: string | null
+          email_sent_to: string
+          id?: string
+          percentage_used: number
+          user_id: string
+        }
+        Update: {
+          budget_id?: string
+          category?: string
+          created_at?: string | null
+          email_sent_to?: string
+          id?: string
+          percentage_used?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       budgets: {
         Row: {
           category: string

@@ -1,146 +1,89 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
-const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  throw new Error("Missing Supabase environment variables");
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-interface BudgetAlertRequest {
-  userId: string;
-  userEmail: string;
-  categoryName: string;
-  currentAmount: number;
-  totalBudget: number;
-  percentageUsed: number;
-}
-
-async function generateEmailContent(data: BudgetAlertRequest): Promise<string> {
-  if (!OPENAI_API_KEY) {
-    console.log("OpenAI API key not found, using fallback content");
-    return generateFallbackContent(data);
-  }
-  
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { 
-            role: 'system', 
-            content: 'You are a helpful financial advisor. Create a concise, professional email about a budget alert with useful suggestions. The email should be formatted with HTML tags for proper display.'
-          },
-          { 
-            role: 'user', 
-            content: `Generate a budget alert email for a user whose ${data.categoryName} budget is at ${data.percentageUsed.toFixed(1)}% utilization (spent ₹${data.currentAmount.toLocaleString('en-IN')} out of ₹${data.totalBudget.toLocaleString('en-IN')}). Include personalized financial advice and tips for managing this category.`
-          }
-        ],
-        temperature: 0.7,
-      }),
-    });
-
-    const responseData = await response.json();
-    if (responseData.choices && responseData.choices[0] && responseData.choices[0].message) {
-      return responseData.choices[0].message.content;
-    } else {
-      console.error("Unexpected OpenAI response format:", responseData);
-      return generateFallbackContent(data);
-    }
-  } catch (error) {
-    console.error("Error generating content with OpenAI:", error);
-    return generateFallbackContent(data);
-  }
-}
-
-function generateFallbackContent(data: BudgetAlertRequest): string {
-  const severity = data.percentageUsed >= 90 ? "Critical" : "Warning";
-  
-  return `
-    <h1>${severity} Budget Alert</h1>
-    <p>Dear User,</p>
-    <p>This is to inform you that your ${data.categoryName} budget is running low.</p>
-    <p>You have spent ₹${data.currentAmount.toLocaleString('en-IN')} out of your total budget of ₹${data.totalBudget.toLocaleString('en-IN')}.</p>
-    <p>This means you have used ${data.percentageUsed.toFixed(1)}% of your budget.</p>
-    
-    <h2>Recommendations:</h2>
-    <ul>
-      <li>Consider reducing non-essential expenses in this category for the rest of the month.</li>
-      <li>Review your spending habits and identify areas where you can save.</li>
-      <li>Adjust your budget allocation if this category consistently requires more funds.</li>
-    </ul>
-    
-    <p>Login to your dashboard for more detailed insights and personalized recommendations.</p>
-    <p>Best regards,<br>Your Financial Dashboard Team</p>
-  `;
-}
 
 serve(async (req) => {
   // Handle CORS preflight requests
-  if (req.method === "OPTIONS") {
-    return new Response(null, {
-      headers: corsHeaders,
-    });
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { userId, userEmail, categoryName, currentAmount, totalBudget, percentageUsed }: BudgetAlertRequest = await req.json();
-
-    // Generate email content using AI
-    const emailBody = await generateEmailContent({
-      userId, 
-      userEmail,
-      categoryName,
-      currentAmount,
-      totalBudget,
-      percentageUsed
-    });
-
-    const emailSubject = `Budget Alert: Your ${categoryName} budget is running low`;
+    // Parse request data
+    const alertData = await req.json();
+    const { 
+      user_id, 
+      email, 
+      category, 
+      percentage_used, 
+      spent, 
+      total, 
+      currency,
+      is_summary,
+      budgets
+    } = alertData;
     
-    // In a real implementation, you would use an email service like SendGrid, Amazon SES, or Resend
-    // For now, we'll log the email content and return a success response
-    console.log(`Would send email to ${userEmail} with subject: ${emailSubject}`);
-    console.log(`Email body: ${emailBody}`);
-
-    // Log the alert in the database
-    await supabase.from('budget_alerts').insert({
-      user_id: userId,
-      category: categoryName,
-      amount_spent: currentAmount,
-      total_budget: totalBudget,
-      percentage_used: percentageUsed,
-      created_at: new Date().toISOString(),
-    });
-
+    if (!email) {
+      throw new Error('No email provided for notification');
+    }
+    
+    console.log(`Generating email for ${email} about budget ${is_summary ? 'summary' : category}`);
+    
+    // Get API keys
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    
+    if (!openaiApiKey) {
+      throw new Error('Missing OpenAI API key in environment');
+    }
+    
+    // Generate email content using OpenAI
+    let emailSubject, emailContent;
+    
+    if (is_summary) {
+      // Generate weekly summary email
+      const { subject, content } = await generateWeeklySummaryEmail(openaiApiKey, email, budgets, currency);
+      emailSubject = subject;
+      emailContent = content;
+    } else {
+      // Generate single budget alert email
+      const { subject, content } = await generateBudgetAlertEmail(
+        openaiApiKey,
+        email,
+        category,
+        percentage_used,
+        spent,
+        total,
+        currency
+      );
+      emailSubject = subject;
+      emailContent = content;
+    }
+    
+    // For demo purposes, we'll just return the generated email content
+    // In production, you would send this email via an email service
+    
+    console.log(`Email generated successfully for ${email}`);
+    
     return new Response(
       JSON.stringify({
         success: true,
-        message: "Budget alert notification sent successfully",
+        email: {
+          to: email,
+          subject: emailSubject,
+          content: emailContent
+        }
       }),
       {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
       }
     );
   } catch (error) {
-    console.error("Error in budget alert function:", error);
+    console.error(`Error in send-budget-alert function: ${error.message}`);
     
     return new Response(
       JSON.stringify({
@@ -148,9 +91,231 @@ serve(async (req) => {
         error: error.message,
       }),
       {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500,
       }
     );
   }
 });
+
+// Function to generate budget alert email content using OpenAI
+async function generateBudgetAlertEmail(apiKey, email, category, percentageUsed, spent, total, currency) {
+  const formattedPercentage = percentageUsed.toFixed(0);
+  const formattedSpent = Number(spent).toLocaleString('en-IN');
+  const formattedTotal = Number(total).toLocaleString('en-IN');
+  
+  // Determine alert level
+  let alertLevel = "approaching";
+  if (percentageUsed >= 100) {
+    alertLevel = "exceeded";
+  } else if (percentageUsed >= 90) {
+    alertLevel = "critical";
+  }
+  
+  const currencySymbol = currency === 'USD' ? '$' : '₹';
+  
+  // Prepare the prompt for OpenAI
+  const prompt = `
+    You are a personal finance assistant that helps users manage their budget. 
+    Write a concise, helpful email for a user with the following budget alert information:
+    
+    - Category: ${category}
+    - User has ${alertLevel} their budget (${formattedPercentage}% used)
+    - Amount spent: ${currencySymbol}${formattedSpent} out of ${currencySymbol}${formattedTotal}
+    
+    The email should:
+    1. Have a brief, attention-grabbing subject line
+    2. Be professional but conversational and friendly in tone
+    3. Start with a brief summary of the budget situation
+    4. Include 2-3 specific, actionable tips to manage spending in this category
+    5. End with an encouraging note
+    6. Be concise and to the point, around 150-200 words maximum
+    
+    Format your response as a JSON object with "subject" and "content" keys.
+  `;
+  
+  // Call OpenAI API
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "You are a personal finance assistant that creates helpful, concise email content."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    })
+  });
+  
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`OpenAI API error: ${error}`);
+  }
+  
+  const data = await response.json();
+  
+  try {
+    // Parse the response from OpenAI
+    const content = data.choices[0].message.content;
+    const emailData = JSON.parse(content);
+    
+    return {
+      subject: emailData.subject,
+      content: emailData.content
+    };
+  } catch (error) {
+    console.error("Error parsing OpenAI response:", error);
+    
+    // Fallback email template
+    return {
+      subject: `Budget Alert: Your ${category} spending has reached ${formattedPercentage}%`,
+      content: `
+        <p>Hello,</p>
+        
+        <p>This is an alert regarding your ${category} budget. You've currently spent ${currencySymbol}${formattedSpent} out of your ${currencySymbol}${formattedTotal} budget (${formattedPercentage}%).</p>
+        
+        <p>We recommend reviewing your recent expenses in this category and adjusting your spending for the remainder of the month.</p>
+        
+        <p>Thank you for using our budget management system!</p>
+      `
+    };
+  }
+}
+
+// Function to generate weekly summary email content using OpenAI
+async function generateWeeklySummaryEmail(apiKey, email, budgets, currency) {
+  const currencySymbol = currency === 'USD' ? '$' : '₹';
+  
+  // Calculate total spending and budget
+  let totalSpent = 0;
+  let totalBudget = 0;
+  let overspentCategories = [];
+  let healthyCategories = [];
+  
+  budgets.forEach(budget => {
+    totalSpent += Number(budget.spent);
+    totalBudget += Number(budget.total);
+    
+    if (budget.percentage >= 90) {
+      overspentCategories.push({
+        category: budget.category,
+        percentage: budget.percentage.toFixed(0),
+        spent: Number(budget.spent).toLocaleString('en-IN'),
+        total: Number(budget.total).toLocaleString('en-IN')
+      });
+    } else if (budget.percentage < 75) {
+      healthyCategories.push({
+        category: budget.category,
+        percentage: budget.percentage.toFixed(0),
+        spent: Number(budget.spent).toLocaleString('en-IN'),
+        total: Number(budget.total).toLocaleString('en-IN')
+      });
+    }
+  });
+  
+  const totalPercentage = (totalSpent / totalBudget * 100).toFixed(0);
+  
+  // Prepare the prompt for OpenAI
+  const prompt = `
+    You are a personal finance assistant that helps users manage their budget. 
+    Write a concise, helpful weekly summary email with the following budget information:
+    
+    - Overall: ${currencySymbol}${totalSpent.toLocaleString('en-IN')} spent out of ${currencySymbol}${totalBudget.toLocaleString('en-IN')} (${totalPercentage}%)
+    - Overspent categories: ${JSON.stringify(overspentCategories)}
+    - Healthy categories: ${JSON.stringify(healthyCategories)}
+    
+    The email should:
+    1. Have a brief, informative subject line about the weekly budget summary
+    2. Be professional but conversational and friendly in tone
+    3. Start with an overview of their overall budget status
+    4. Highlight areas of concern (overspent categories) if any
+    5. Praise good budgeting in healthy categories
+    6. Provide 2-3 general tips for the coming week
+    7. Be concise and to the point, around 200-250 words maximum
+    
+    Format your response as a JSON object with "subject" and "content" keys.
+  `;
+  
+  // Call OpenAI API
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "You are a personal finance assistant that creates helpful, concise email content."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    })
+  });
+  
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`OpenAI API error: ${error}`);
+  }
+  
+  const data = await response.json();
+  
+  try {
+    // Parse the response from OpenAI
+    const content = data.choices[0].message.content;
+    const emailData = JSON.parse(content);
+    
+    return {
+      subject: emailData.subject,
+      content: emailData.content
+    };
+  } catch (error) {
+    console.error("Error parsing OpenAI response:", error);
+    
+    // Fallback email template
+    return {
+      subject: `Your Weekly Budget Summary`,
+      content: `
+        <p>Hello,</p>
+        
+        <p>Here's your weekly budget summary:</p>
+        
+        <p>Overall, you've spent ${currencySymbol}${totalSpent.toLocaleString('en-IN')} out of your ${currencySymbol}${totalBudget.toLocaleString('en-IN')} total budget (${totalPercentage}%).</p>
+        
+        ${overspentCategories.length > 0 ? `
+        <p><strong>Categories to watch:</strong></p>
+        <ul>
+          ${overspentCategories.map(cat => 
+            `<li>${cat.category}: ${cat.percentage}% used (${currencySymbol}${cat.spent} of ${currencySymbol}${cat.total})</li>`
+          ).join('')}
+        </ul>
+        ` : ''}
+        
+        ${healthyCategories.length > 0 ? `
+        <p><strong>Well managed categories:</strong></p>
+        <ul>
+          ${healthyCategories.map(cat => 
+            `<li>${cat.category}: ${cat.percentage}% used (${currencySymbol}${cat.spent} of ${currencySymbol}${cat.total})</li>`
+          ).join('')}
+        </ul>
+        ` : ''}
+        
+        <p>Thank you for using our budget management system!</p>
+      `
+    };
+  }
+}
