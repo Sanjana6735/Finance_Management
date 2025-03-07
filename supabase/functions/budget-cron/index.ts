@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 
@@ -24,8 +25,8 @@ serve(async (req) => {
     // Create Supabase client with service role key
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Check if this is a weekly summary request
-    const { isWeeklySummary } = await req.json();
+    // Parse request body
+    const { isWeeklySummary } = await req.json().catch(() => ({ isWeeklySummary: false }));
     
     // If it's a weekly summary, we'll generate summary emails for all users
     if (isWeeklySummary) {
@@ -84,6 +85,17 @@ async function checkAllBudgets(supabase, supabaseUrl, supabaseServiceKey, corsHe
       ) {
         console.log(`Budget for ${budget.category} at ${percentageUsed.toFixed(0)}% - sending alert`);
         
+        // Get user's email
+        const { data: userData, error: userError } = await supabase.auth.admin.getUserById(budget.user_id);
+        
+        if (userError) throw userError;
+        
+        const userEmail = userData?.user?.email;
+        
+        if (!userEmail) {
+          throw new Error(`Could not find email for user ${budget.user_id}`);
+        }
+        
         // Call the budget-notifications function
         const response = await fetch(`${supabaseUrl}/functions/v1/budget-notifications`, {
           method: 'POST',
@@ -95,19 +107,24 @@ async function checkAllBudgets(supabase, supabaseUrl, supabaseServiceKey, corsHe
             budget_id: budget.id,
             user_id: budget.user_id,
             category: budget.category,
-            percentage_used: percentageUsed
+            percentage_used: percentageUsed,
+            email: userEmail
           })
         });
         
+        const responseData = await response.json();
+        
         if (!response.ok) {
-          const error = await response.text();
-          throw new Error(`Failed to send budget notification: ${error}`);
+          throw new Error(`Failed to send budget notification: ${JSON.stringify(responseData)}`);
         }
+        
+        console.log(`Alert sent for ${budget.category}:`, responseData);
         
         alertsSent.push({
           category: budget.category,
           percentage: percentageUsed.toFixed(0),
-          user_id: budget.user_id
+          user_id: budget.user_id,
+          email: userEmail
         });
       }
     } catch (error) {
@@ -197,10 +214,13 @@ async function handleWeeklySummary(supabase, supabaseUrl, supabaseServiceKey, co
         })
       });
       
+      const responseData = await response.json();
+      
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Failed to send weekly summary: ${error}`);
+        throw new Error(`Failed to send weekly summary: ${JSON.stringify(responseData)}`);
       }
+      
+      console.log(`Summary sent to ${userEmail}:`, responseData);
       
       // Add a notification for the user
       const { error: notificationError } = await supabase

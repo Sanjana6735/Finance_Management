@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
@@ -115,6 +114,7 @@ const TransactionList = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const fetchTransactions = async () => {
     if (!userId) {
@@ -229,14 +229,6 @@ const TransactionList = () => {
             } else {
               console.log("Budget alert response:", data);
               
-              // Add to notifications table
-              await supabase.from('notifications').insert({
-                user_id: userId,
-                title: `Budget Alert: ${category}`,
-                message: `You've used ${percentageUsed.toFixed(0)}% of your ${category} budget.`,
-                read: false
-              });
-              
               toast({
                 title: "Budget Alert",
                 description: `You've used ${percentageUsed.toFixed(0)}% of your ${category} budget.`,
@@ -267,6 +259,12 @@ const TransactionList = () => {
       return;
     }
 
+    if (isProcessing) {
+      return; // Prevent duplicate submissions
+    }
+
+    setIsProcessing(true);
+
     try {
       console.log("Adding new transaction:", newTransaction);
       
@@ -279,6 +277,14 @@ const TransactionList = () => {
       
       console.log(`Parsed amount: ${parsedAmount}`);
       
+      // Make sure the category is valid
+      const validCategories = ['shopping', 'food', 'housing', 'transport', 'healthcare', 'education', 'entertainment', 'personal', 'other'];
+      const category = newTransaction.category.toLowerCase();
+      
+      if (!validCategories.includes(category)) {
+        throw new Error(`Invalid category: ${category}`);
+      }
+      
       // Insert into Supabase
       const { data, error } = await supabase
         .from('transactions')
@@ -287,7 +293,7 @@ const TransactionList = () => {
             name: newTransaction.name,
             amount: parsedAmount,
             type: newTransaction.type,
-            category: newTransaction.category,
+            category: category,
             date: new Date().toISOString(),
             user_id: userId
           }
@@ -314,7 +320,7 @@ const TransactionList = () => {
         setTransactions(prevTransactions => [formattedTransaction, ...prevTransactions]);
         
         if (newTransaction.type === 'expense') {
-          await updateBudget(newTransaction.category, parsedAmount);
+          await updateBudget(category, parsedAmount);
         }
         
         await updateAccountBalance(parsedAmount, newTransaction.type);
@@ -338,6 +344,8 @@ const TransactionList = () => {
         description: "Failed to add transaction. Please try again later.",
         variant: "destructive",
       });
+    } finally {
+      setIsProcessing(false);
     }
   };
 

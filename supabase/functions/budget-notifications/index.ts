@@ -129,6 +129,20 @@ serve(async (req) => {
           console.error('Error logging budget alert:', logError);
         }
         
+        // Add a notification for the user
+        const { error: notificationError } = await supabase
+          .from('notifications')
+          .insert({
+            user_id,
+            title: `Budget Alert: ${category}`,
+            message: `You've used ${percentage_used.toFixed(0)}% of your ${category} budget.`,
+            read: false
+          });
+        
+        if (notificationError) {
+          console.error('Error creating notification:', notificationError);
+        }
+        
         return new Response(
           JSON.stringify({
             success: true,

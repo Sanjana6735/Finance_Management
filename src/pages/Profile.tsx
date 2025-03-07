@@ -104,7 +104,7 @@ const Profile = () => {
     if (userId) {
       fetchProfile();
     }
-  }, [userId, user, toast]);
+  }, [userId, toast]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
