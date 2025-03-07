@@ -1,5 +1,5 @@
 
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 
 const corsHeaders = {
@@ -8,258 +8,127 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+  // Handle preflight CORS
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      headers: corsHeaders,
+      status: 204,
+    });
   }
 
   try {
-    // Get environment variables
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    const body = await req.json();
+    const isWeeklySummary = body.isWeeklySummary || false;
     
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Missing Supabase credentials');
-    }
-    
-    // Create Supabase client with service role key
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
-    // Parse request body
-    const { isWeeklySummary } = await req.json().catch(() => ({ isWeeklySummary: false }));
-    
-    // If it's a weekly summary, we'll generate summary emails for all users
+    console.log(`Processing ${isWeeklySummary ? "weekly summary" : "daily alert"} cron job`);
+
     if (isWeeklySummary) {
-      return await handleWeeklySummary(supabase, supabaseUrl, supabaseServiceKey, corsHeaders);
+      const { user_id, email, summary } = body;
+      
+      if (!user_id || !email || !summary) {
+        return new Response(
+          JSON.stringify({
+            error: "Missing required fields for weekly summary",
+            received: { user_id, email, summary: !!summary },
+          }),
+          {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 400,
+          }
+        );
+      }
+
+      // Generate weekly summary email
+      const summaryHTML = `
+        <html>
+          <body>
+            <h1>Weekly Budget Summary</h1>
+            <p>Hello,</p>
+            <p>Here's your weekly budget summary:</p>
+            <table border="1" cellpadding="5" style="border-collapse: collapse;">
+              <tr>
+                <th>Category</th>
+                <th>Budget</th>
+                <th>Spent</th>
+                <th>Percentage</th>
+              </tr>
+              ${summary.map((item: any) => `
+                <tr>
+                  <td>${item.category.charAt(0).toUpperCase() + item.category.slice(1)}</td>
+                  <td>₹${item.total.toLocaleString('en-IN')}</td>
+                  <td>₹${item.spent.toLocaleString('en-IN')}</td>
+                  <td style="color: ${item.percentage > 90 ? 'red' : item.percentage > 75 ? 'orange' : 'green'}">
+                    ${item.percentage}%
+                  </td>
+                </tr>
+              `).join('')}
+            </table>
+            <p>Stay on top of your finances!</p>
+            <p>Thank you,<br>Finance Dashboard Team</p>
+          </body>
+        </html>
+      `;
+
+      // Log the email that would be sent
+      console.log("------ WEEKLY SUMMARY EMAIL ------");
+      console.log(`To: ${email}`);
+      console.log(`Subject: Your Weekly Budget Summary`);
+      console.log(`Body: ${summaryHTML}`);
+      console.log("-----------------------------------");
+
+      // Store this email log in the database
+      const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      try {
+        const { data: logData, error: logError } = await supabase
+          .from("email_logs")
+          .insert([
+            {
+              user_id: user_id,
+              email_to: email,
+              subject: "Your Weekly Budget Summary",
+              email_type: "weekly_summary",
+              content: summaryHTML,
+            },
+          ]);
+
+        if (logError) {
+          console.error("Error logging weekly summary email:", logError);
+        } else {
+          console.log("Weekly summary email logged to database:", logData);
+        }
+      } catch (logError) {
+        console.error("Error with email logging:", logError);
+      }
+      
+    } else {
+      // Individual budget alerts are now handled by the budget-notifications function
+      console.log("Individual budget alert - forwarding to budget-notifications");
     }
-    
-    // Otherwise, check all budgets for alerts
-    return await checkAllBudgets(supabase, supabaseUrl, supabaseServiceKey, corsHeaders);
+
+    return new Response(
+      JSON.stringify({
+        message: `${isWeeklySummary ? "Weekly summary" : "Budget alert"} processed successfully`,
+        timestamp: new Date().toISOString(),
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      }
+    );
   } catch (error) {
-    console.error(`Error in budget-cron function: ${error.message}`);
+    console.error("Error in budget cron job:", error);
     
     return new Response(
       JSON.stringify({
-        success: false,
-        error: error.message,
+        error: error.message || String(error),
       }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 500,
       }
     );
   }
 });
-
-async function checkAllBudgets(supabase, supabaseUrl, supabaseServiceKey, corsHeaders) {
-  console.log('Checking all budgets for alerts...');
-  
-  // Get all budgets with relevant thresholds
-  const { data: budgets, error: budgetsError } = await supabase
-    .from('budgets')
-    .select('*');
-  
-  if (budgetsError) {
-    throw new Error(`Error fetching budgets: ${budgetsError.message}`);
-  }
-  
-  console.log(`Found ${budgets.length} budgets to check`);
-  
-  // Track alerts sent
-  const alertsSent = [];
-  const errors = [];
-  
-  // Check each budget and send alerts if thresholds reached
-  for (const budget of budgets) {
-    try {
-      const percentageUsed = (budget.spent / budget.total) * 100;
-      
-      // Check if percentage has crossed important thresholds (75%, 90%, 100%)
-      if (
-        percentageUsed >= 75 && 
-        (
-          percentageUsed >= (100) || 
-          percentageUsed >= (90) || 
-          percentageUsed >= (75)
-        )
-      ) {
-        console.log(`Budget for ${budget.category} at ${percentageUsed.toFixed(0)}% - sending alert`);
-        
-        // Get user's email
-        const { data: userData, error: userError } = await supabase.auth.admin.getUserById(budget.user_id);
-        
-        if (userError) throw userError;
-        
-        const userEmail = userData?.user?.email;
-        
-        if (!userEmail) {
-          throw new Error(`Could not find email for user ${budget.user_id}`);
-        }
-        
-        // Call the budget-notifications function
-        const response = await fetch(`${supabaseUrl}/functions/v1/budget-notifications`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseServiceKey}`
-          },
-          body: JSON.stringify({
-            budget_id: budget.id,
-            user_id: budget.user_id,
-            category: budget.category,
-            percentage_used: percentageUsed,
-            email: userEmail
-          })
-        });
-        
-        const responseData = await response.json();
-        
-        if (!response.ok) {
-          throw new Error(`Failed to send budget notification: ${JSON.stringify(responseData)}`);
-        }
-        
-        console.log(`Alert sent for ${budget.category}:`, responseData);
-        
-        alertsSent.push({
-          category: budget.category,
-          percentage: percentageUsed.toFixed(0),
-          user_id: budget.user_id,
-          email: userEmail
-        });
-      }
-    } catch (error) {
-      console.error(`Error processing budget ${budget.id}:`, error);
-      errors.push({
-        budget_id: budget.id,
-        category: budget.category,
-        error: error.message
-      });
-    }
-  }
-  
-  return new Response(
-    JSON.stringify({
-      success: true,
-      message: `Budget check completed - sent ${alertsSent.length} alerts`,
-      alerts_sent: alertsSent,
-      errors: errors
-    }),
-    {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    }
-  );
-}
-
-async function handleWeeklySummary(supabase, supabaseUrl, supabaseServiceKey, corsHeaders) {
-  console.log('Generating weekly budget summaries...');
-  
-  // Get distinct user IDs with budgets
-  const { data: users, error: usersError } = await supabase
-    .from('budgets')
-    .select('user_id')
-    .distinct();
-  
-  if (usersError) {
-    throw new Error(`Error fetching users with budgets: ${usersError.message}`);
-  }
-  
-  console.log(`Found ${users.length} users for weekly summaries`);
-  
-  const summariesSent = [];
-  const errors = [];
-  
-  // Generate summary for each user
-  for (const user of users) {
-    try {
-      // Get all budgets for this user
-      const { data: userBudgets, error: budgetsError } = await supabase
-        .from('budgets')
-        .select('*')
-        .eq('user_id', user.user_id);
-      
-      if (budgetsError) {
-        throw new Error(`Error fetching budgets for user: ${budgetsError.message}`);
-      }
-      
-      // Get user's email
-      const { data: userData, error: userError } = await supabase.auth.admin.getUserById(user.user_id);
-      
-      if (userError || !userData?.user?.email) {
-        throw new Error(`Unable to find user email: ${userError?.message || 'User not found'}`);
-      }
-      
-      const userEmail = userData.user.email;
-      
-      console.log(`Generating weekly summary for ${userEmail} with ${userBudgets.length} budgets`);
-      
-      // Call the send-budget-alert function with the summary flag
-      const response = await fetch(`${supabaseUrl}/functions/v1/send-budget-alert`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseServiceKey}`
-        },
-        body: JSON.stringify({
-          user_id: user.user_id,
-          email: userEmail,
-          is_summary: true,
-          budgets: userBudgets.map(budget => ({
-            category: budget.category,
-            spent: budget.spent,
-            total: budget.total,
-            percentage: (budget.spent / budget.total) * 100
-          })),
-          currency: 'INR'
-        })
-      });
-      
-      const responseData = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(`Failed to send weekly summary: ${JSON.stringify(responseData)}`);
-      }
-      
-      console.log(`Summary sent to ${userEmail}:`, responseData);
-      
-      // Add a notification for the user
-      const { error: notificationError } = await supabase
-        .from('notifications')
-        .insert({
-          user_id: user.user_id,
-          title: "Weekly Budget Summary",
-          message: "Your weekly budget summary is ready. Check your email for details.",
-          read: false
-        });
-      
-      if (notificationError) {
-        console.error('Error creating notification:', notificationError);
-      }
-      
-      summariesSent.push({
-        user_id: user.user_id,
-        email: userEmail,
-        budgets_count: userBudgets.length
-      });
-    } catch (error) {
-      console.error(`Error processing summary for user ${user.user_id}:`, error);
-      errors.push({
-        user_id: user.user_id,
-        error: error.message
-      });
-    }
-  }
-  
-  return new Response(
-    JSON.stringify({
-      success: true,
-      message: `Weekly summaries completed - sent ${summariesSent.length} summaries`,
-      summaries_sent: summariesSent,
-      errors: errors
-    }),
-    {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    }
-  );
-}

@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
@@ -57,7 +58,10 @@ const formatAmount = (amount: number) => {
 };
 
 const getCategoryIcon = (category: string) => {
-  switch (category.toLowerCase()) {
+  // standardize category name (case insensitive match)
+  const standardizedCategory = category.toLowerCase();
+  
+  switch (standardizedCategory) {
     case "shopping":
       return <ShoppingBag size={16} />;
     case "food":
@@ -141,16 +145,25 @@ const TransactionList = () => {
       if (data) {
         console.log("Fetched transactions:", data);
         
-        const formattedTransactions = data.map(item => ({
-          id: item.id,
-          name: item.name,
-          amount: formatAmount(Number(item.amount)),
-          type: item.type as "expense" | "income",
-          category: item.category,
-          date: formatDate(item.date)
-        }));
+        // Clear any existing duplicates by using a Map with transaction id as key
+        const uniqueTransactions = new Map();
         
-        setTransactions(formattedTransactions);
+        data.forEach(item => {
+          // Only add if not already in the map
+          if (!uniqueTransactions.has(item.id)) {
+            uniqueTransactions.set(item.id, {
+              id: item.id,
+              name: item.name,
+              amount: formatAmount(Number(item.amount)),
+              type: item.type as "expense" | "income",
+              // Ensure category is properly formatted and stored
+              category: item.category ? item.category.charAt(0).toUpperCase() + item.category.slice(1).toLowerCase() : "Other",
+              date: formatDate(item.date)
+            });
+          }
+        });
+        
+        setTransactions(Array.from(uniqueTransactions.values()));
       }
     } catch (err) {
       console.error("Error fetching transactions:", err);
@@ -169,13 +182,15 @@ const TransactionList = () => {
     if (!userId || !category) return;
     
     try {
-      console.log(`Updating budget for category: ${category}, amount: ${amount}`);
+      // Standardize category name to lowercase for consistency
+      const standardizedCategory = category.toLowerCase();
+      console.log(`Updating budget for category: ${standardizedCategory}, amount: ${amount}`);
       
       const { data: budgets, error: budgetError } = await supabase
         .from('budgets')
         .select('*')
         .eq('user_id', userId)
-        .eq('category', category)
+        .eq('category', standardizedCategory)
         .order('created_at', { ascending: false })
         .limit(1);
         
@@ -195,11 +210,11 @@ const TransactionList = () => {
           
         if (updateError) throw updateError;
         
-        console.log(`Budget for ${category} updated: ₹${newSpent}`);
+        console.log(`Budget for ${standardizedCategory} updated: ₹${newSpent}`);
         
         // Trigger budget alert check if threshold is reached
         if (percentageUsed >= 75) {
-          console.log(`Budget threshold reached: ${percentageUsed}%, sending alert for ${category}`);
+          console.log(`Budget threshold reached: ${percentageUsed}%, sending alert for ${standardizedCategory}`);
           
           try {
             // Get user email for notifications
@@ -218,7 +233,7 @@ const TransactionList = () => {
               body: {
                 budget_id: budget.id,
                 user_id: userId,
-                category: category,
+                category: standardizedCategory,
                 percentage_used: percentageUsed,
                 email: userEmail
               }
@@ -231,7 +246,7 @@ const TransactionList = () => {
               
               toast({
                 title: "Budget Alert",
-                description: `You've used ${percentageUsed.toFixed(0)}% of your ${category} budget.`,
+                description: `You've used ${percentageUsed.toFixed(0)}% of your ${standardizedCategory} budget.`,
               });
             }
           } catch (alertError) {
@@ -242,7 +257,7 @@ const TransactionList = () => {
         const event = new CustomEvent('budget-update');
         window.dispatchEvent(event);
       } else {
-        console.log(`No budget found for category: ${category}`);
+        console.log(`No budget found for category: ${standardizedCategory}`);
       }
     } catch (err) {
       console.error("Error updating budget:", err);
@@ -277,12 +292,37 @@ const TransactionList = () => {
       
       console.log(`Parsed amount: ${parsedAmount}`);
       
-      // Make sure the category is valid
+      // Make sure the category is valid and properly formatted
       const validCategories = ['shopping', 'food', 'housing', 'transport', 'healthcare', 'education', 'entertainment', 'personal', 'other'];
-      const category = newTransaction.category.toLowerCase();
+      const standardizedCategory = newTransaction.category.toLowerCase();
       
-      if (!validCategories.includes(category)) {
-        throw new Error(`Invalid category: ${category}`);
+      if (!validCategories.includes(standardizedCategory)) {
+        throw new Error(`Invalid category: ${standardizedCategory}`);
+      }
+      
+      // Check for duplicate prevention
+      const checkDate = new Date();
+      const timeThreshold = new Date(checkDate.getTime() - 5000); // 5 seconds ago
+      
+      // Check for recent transactions to prevent duplicates
+      const { data: recentTransactions, error: recentError } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('name', newTransaction.name)
+        .eq('amount', parsedAmount)
+        .gte('date', timeThreshold.toISOString());
+        
+      if (recentError) throw recentError;
+      
+      // If a recent transaction with same details exists, don't add it
+      if (recentTransactions && recentTransactions.length > 0) {
+        toast({
+          title: "Duplicate transaction",
+          description: "This transaction appears to be a duplicate of one you just added.",
+          variant: "destructive",
+        });
+        return;
       }
       
       // Insert into Supabase
@@ -293,7 +333,7 @@ const TransactionList = () => {
             name: newTransaction.name,
             amount: parsedAmount,
             type: newTransaction.type,
-            category: category,
+            category: standardizedCategory,
             date: new Date().toISOString(),
             user_id: userId
           }
@@ -320,7 +360,7 @@ const TransactionList = () => {
         setTransactions(prevTransactions => [formattedTransaction, ...prevTransactions]);
         
         if (newTransaction.type === 'expense') {
-          await updateBudget(category, parsedAmount);
+          await updateBudget(standardizedCategory, parsedAmount);
         }
         
         await updateAccountBalance(parsedAmount, newTransaction.type);
@@ -441,7 +481,7 @@ const TransactionList = () => {
       }
       
       if (filters.category && filters.category !== 'all') {
-        query = query.eq('category', filters.category);
+        query = query.eq('category', filters.category.toLowerCase());
       }
       
       if (filters.type && filters.type !== 'all') {
@@ -465,16 +505,23 @@ const TransactionList = () => {
           }
           
           if (data) {
-            const formattedTransactions = data.map(item => ({
-              id: item.id,
-              name: item.name,
-              amount: formatAmount(Number(item.amount)),
-              type: item.type,
-              category: item.category,
-              date: formatDate(item.date)
-            }));
+            // Process to avoid duplicates
+            const uniqueTransactions = new Map();
             
-            setTransactions(formattedTransactions);
+            data.forEach(item => {
+              if (!uniqueTransactions.has(item.id)) {
+                uniqueTransactions.set(item.id, {
+                  id: item.id,
+                  name: item.name,
+                  amount: formatAmount(Number(item.amount)),
+                  type: item.type,
+                  category: item.category.charAt(0).toUpperCase() + item.category.slice(1).toLowerCase(),
+                  date: formatDate(item.date)
+                });
+              }
+            });
+            
+            setTransactions(Array.from(uniqueTransactions.values()));
           }
           
           setIsLoading(false);
@@ -509,6 +556,37 @@ const TransactionList = () => {
       window.removeEventListener('refresh-transactions', handleRefreshEvent);
     };
   }, [userId]);
+
+  const handleDownload = () => {
+    const headers = ["Id", "Name", "Amount", "Type", "Category", "Date"];
+    const csvContent = [
+      headers.join(","),
+      ...transactions.map(transaction => 
+        [
+          transaction.id,
+          transaction.name,
+          transaction.amount,
+          transaction.type,
+          transaction.category,
+          transaction.date
+        ].join(",")
+      )
+    ].join("\n");
+    
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "transactions.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast({
+      title: "Download complete",
+      description: "Your transactions have been downloaded as a CSV file.",
+    });
+  };
 
   if (isLoading && transactions.length === 0) {
     return (

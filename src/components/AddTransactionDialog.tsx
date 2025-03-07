@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -68,9 +69,6 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
       }
       numericAmount = numericAmount.replace(/,/g, "");
       
-      // Format amount with ₹ sign if not already present
-      const formattedAmount = amount.startsWith("₹") ? amount : `₹${amount}`;
-      
       // Let the parent component handle the supabase insertion
       onAddTransaction({
         name,
@@ -87,8 +85,6 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
       setCategory("shopping");
       setDate(new Date());
       setReceipt(null);
-      
-      // Close dialog - this will happen after onAddTransaction completes
       
     } catch (error) {
       console.error("Error adding transaction:", error);
@@ -174,7 +170,10 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
             
             <div>
               <Label htmlFor="category">Category</Label>
-              <Select value={category} onValueChange={(value) => setCategory(value)}>
+              <Select 
+                value={category} 
+                onValueChange={(value) => setCategory(value.toLowerCase())}
+              >
                 <SelectTrigger id="category" className="mt-1">
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>

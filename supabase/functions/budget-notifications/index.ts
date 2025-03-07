@@ -1,5 +1,5 @@
 
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 
 const corsHeaders = {
@@ -7,181 +7,107 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+interface RequestBody {
+  budget_id: string;
+  user_id: string;
+  category: string;
+  percentage_used: number;
+  email: string;
+}
+
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+  // Handle preflight CORS
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      headers: corsHeaders,
+      status: 204,
+    });
   }
 
   try {
-    // Get environment variables
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-    
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Missing Supabase credentials');
-    }
-    
-    // Create Supabase client with service role key
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
-    // Parse request body
-    const body = await req.json();
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const body: RequestBody = await req.json();
     const { budget_id, user_id, category, percentage_used, email } = body;
-    
-    console.log("Received budget notification request:", body);
-    
-    if (!budget_id || !user_id || !category) {
-      throw new Error('Missing required parameters');
-    }
-    
-    // Use provided email or fetch user's email if not provided
-    let userEmail = email;
-    
-    if (!userEmail) {
-      console.log("Email not provided, fetching from auth.users");
-      // Try to get user's email from auth.users using admin functions
-      const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(user_id);
-      
-      if (authError || !authUser?.user?.email) {
-        throw new Error(`Unable to find user email: ${authError?.message || 'User not found'}`);
-      }
-      
-      userEmail = authUser.user.email;
-    }
-    
-    console.log(`User email for notifications: ${userEmail}`);
-    
-    // Get budget details
-    const { data: budgetData, error: budgetError } = await supabase
-      .from('budgets')
-      .select('*')
-      .eq('id', budget_id)
-      .single();
-    
-    if (budgetError || !budgetData) {
-      throw new Error(`Error fetching budget: ${budgetError?.message || 'Budget not found'}`);
-    }
-    
-    // Check if we've already sent an alert for this budget at this threshold
-    const thresholdRounded = Math.floor(percentage_used / 10) * 10;
-    const { data: existingAlerts, error: alertsError } = await supabase
-      .from('budget_alert_logs')
-      .select('*')
-      .eq('budget_id', budget_id)
-      .eq('percentage_used', thresholdRounded)
-      .order('created_at', { ascending: false })
-      .limit(1);
-    
-    if (alertsError) {
-      console.error('Error checking existing alerts:', alertsError);
-    }
-    
-    // Only send a new alert if we haven't sent one for this threshold in the last 24 hours
-    const shouldSendAlert = 
-      !existingAlerts?.length || 
-      (new Date().getTime() - new Date(existingAlerts[0].created_at).getTime() > 24 * 60 * 60 * 1000);
-    
-    if (shouldSendAlert) {
-      console.log(`Sending budget alert for ${category} at ${percentage_used.toFixed(0)}% to ${userEmail}`);
-      
-      try {
-        // Call the send-budget-alert function
-        const response = await fetch(`${supabaseUrl}/functions/v1/send-budget-alert`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseServiceKey}`
-          },
-          body: JSON.stringify({
-            user_id,
-            email: userEmail,
-            category,
-            percentage_used,
-            spent: budgetData.spent,
-            total: budgetData.total,
-            currency: 'INR'
-          })
-        });
-        
-        let result;
-        if (response.ok) {
-          result = await response.json();
-          console.log("Budget alert email sent:", result);
-        } else {
-          const errorText = await response.text();
-          console.error(`Failed to send budget alert: ${errorText}`);
-          throw new Error(`Failed to send budget alert: ${errorText}`);
-        }
-        
-        // Log the alert in the database
-        const { error: logError } = await supabase
-          .from('budget_alert_logs')
-          .insert({
-            user_id,
-            budget_id,
-            category,
-            percentage_used: thresholdRounded,
-            email_sent_to: userEmail
-          });
-        
-        if (logError) {
-          console.error('Error logging budget alert:', logError);
-        }
-        
-        // Add a notification for the user
-        const { error: notificationError } = await supabase
-          .from('notifications')
-          .insert({
-            user_id,
-            title: `Budget Alert: ${category}`,
-            message: `You've used ${percentage_used.toFixed(0)}% of your ${category} budget.`,
-            read: false
-          });
-        
-        if (notificationError) {
-          console.error('Error creating notification:', notificationError);
-        }
-        
-        return new Response(
-          JSON.stringify({
-            success: true,
-            message: `Budget alert sent to ${userEmail}`,
-            details: result
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200,
-          }
-        );
-      } catch (error) {
-        console.error("Error in send-budget-alert:", error);
-        throw error;
-      }
-    } else {
-      console.log(`Skipping alert for ${category} - already sent recently`);
-      
+
+    if (!budget_id || !user_id || !category || !email) {
       return new Response(
         JSON.stringify({
-          success: true,
-          message: 'Alert skipped - already sent recently',
+          error: "Missing required fields",
+          received: { budget_id, user_id, category, email },
         }),
         {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
         }
       );
     }
+
+    console.log(`Processing budget alert for ${category}, ${percentage_used.toFixed(0)}% used`);
+
+    // Insert notification into the notifications table
+    const { data: notificationData, error: notificationError } = await supabase
+      .from("notifications")
+      .insert([
+        {
+          user_id: user_id,
+          title: "Budget Alert",
+          message: `You've used ${percentage_used.toFixed(0)}% of your ${category} budget.`,
+          type: "budget",
+        },
+      ])
+      .select();
+
+    if (notificationError) {
+      console.error("Error creating notification:", notificationError);
+      // Don't fail the whole function if just notification fails
+    } else {
+      console.log("Budget notification created:", notificationData);
+    }
+
+    // Call the email sending function
+    const emailResponse = await fetch(
+      `${supabaseUrl}/functions/v1/send-budget-alert`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({
+          email: email,
+          category: category,
+          percentage_used: percentage_used,
+          user_id: user_id,
+        }),
+      }
+    );
+    
+    const emailResult = await emailResponse.json();
+    console.log("Email sending result:", emailResult);
+
+    return new Response(
+      JSON.stringify({
+        message: "Budget alert processed successfully",
+        notification: notificationData || null,
+        email: emailResult,
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      }
+    );
   } catch (error) {
-    console.error(`Error in budget-notifications function: ${error.message}`);
+    console.error("Error processing budget alert:", error);
     
     return new Response(
       JSON.stringify({
-        success: false,
-        error: error.message,
+        error: error.message || String(error),
       }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 500,
       }
     );
