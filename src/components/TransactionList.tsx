@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
@@ -201,13 +202,25 @@ const TransactionList = () => {
           console.log(`Budget threshold reached: ${percentageUsed}%, sending alert for ${category}`);
           
           try {
+            // Get user email for notifications
+            const { data: userData, error: userError } = await supabase.auth.getUser();
+            if (userError) throw userError;
+            
+            const userEmail = userData.user?.email;
+            
+            if (!userEmail) {
+              console.error("User email not found for notifications");
+              return;
+            }
+            
             // Call the budget-notifications edge function
             const { data, error } = await supabase.functions.invoke('budget-notifications', {
               body: {
                 budget_id: budget.id,
                 user_id: userId,
                 category: category,
-                percentage_used: percentageUsed
+                percentage_used: percentageUsed,
+                email: userEmail
               }
             });
             
@@ -215,6 +228,19 @@ const TransactionList = () => {
               console.error("Error sending budget alert:", error);
             } else {
               console.log("Budget alert response:", data);
+              
+              // Add to notifications table
+              await supabase.from('notifications').insert({
+                user_id: userId,
+                title: `Budget Alert: ${category}`,
+                message: `You've used ${percentageUsed.toFixed(0)}% of your ${category} budget.`,
+                read: false
+              });
+              
+              toast({
+                title: "Budget Alert",
+                description: `You've used ${percentageUsed.toFixed(0)}% of your ${category} budget.`,
+              });
             }
           } catch (alertError) {
             console.error("Error sending budget alert:", alertError);
@@ -245,14 +271,7 @@ const TransactionList = () => {
       console.log("Adding new transaction:", newTransaction);
       
       // Parse the amount from the formatted string
-      let numericAmount = newTransaction.amount;
-      if (typeof numericAmount === 'string') {
-        if (numericAmount.startsWith('₹')) {
-          numericAmount = numericAmount.substring(1);
-        }
-        numericAmount = numericAmount.replace(/,/g, '');
-      }
-      const parsedAmount = parseFloat(numericAmount);
+      const parsedAmount = parseFloat(newTransaction.amount);
       
       if (isNaN(parsedAmount)) {
         throw new Error(`Invalid amount: ${newTransaction.amount}`);
@@ -260,6 +279,7 @@ const TransactionList = () => {
       
       console.log(`Parsed amount: ${parsedAmount}`);
       
+      // Insert into Supabase
       const { data, error } = await supabase
         .from('transactions')
         .insert([
@@ -304,22 +324,10 @@ const TransactionList = () => {
           description: `${newTransaction.name} has been added to your transactions.`,
         });
         
-        // Create a notification
-        try {
-          await supabase
-            .from('notifications')
-            .insert({
-              user_id: userId,
-              title: `New ${newTransaction.type}: ${newTransaction.name}`,
-              message: `You have ${newTransaction.type === 'expense' ? 'spent' : 'received'} ${formatAmount(parsedAmount)} on ${newTransaction.name}`,
-              read: false
-            });
-          
-          console.log("Transaction notification created");
-        } catch (notificationError) {
-          console.error("Error creating notification:", notificationError);
-        }
+        // Close the dialog
+        setDialogOpen(false);
         
+        // Dispatch events
         const event = new CustomEvent('transaction-update');
         window.dispatchEvent(event);
       }

@@ -115,7 +115,21 @@ const Profile = () => {
       console.log("Updating profile for user ID:", userId);
       console.log("Profile data to update:", userData);
       
-      // Create the profiles table entry if it doesn't exist yet
+      // First update user metadata
+      const { error: updateError } = await supabase.auth.updateUser({
+        data: {
+          username: userData.username,
+          full_name: userData.fullName,
+          avatar_url: userData.avatarUrl
+        }
+      });
+      
+      if (updateError) {
+        console.error("Error updating user metadata:", updateError);
+        throw updateError;
+      }
+      
+      // Then update profiles table
       const { error: upsertError } = await supabase
         .from('profiles')
         .upsert({
@@ -129,20 +143,6 @@ const Profile = () => {
       if (upsertError) {
         console.error("Error upserting profile:", upsertError);
         throw upsertError;
-      }
-
-      // Also update user metadata
-      const { error: updateError } = await supabase.auth.updateUser({
-        data: {
-          username: userData.username,
-          full_name: userData.fullName,
-          avatar_url: userData.avatarUrl
-        }
-      });
-      
-      if (updateError) {
-        console.error("Error updating user metadata:", updateError);
-        throw updateError;
       }
 
       console.log("Profile updated successfully");
@@ -212,7 +212,17 @@ const Profile = () => {
       
       setUserData({ ...userData, avatarUrl });
 
-      // Update profile
+      // First update user metadata
+      const { error: authUpdateError } = await supabase.auth.updateUser({
+        data: { avatar_url: avatarUrl }
+      });
+      
+      if (authUpdateError) {
+        console.error("Error updating auth user with avatar:", authUpdateError);
+        throw authUpdateError;
+      }
+      
+      // Then update profile
       const { error: updateError } = await supabase
         .from('profiles')
         .upsert({
@@ -224,16 +234,6 @@ const Profile = () => {
       if (updateError) {
         console.error("Error updating profile with avatar:", updateError);
         throw updateError;
-      }
-
-      // Update user metadata
-      const { error: authUpdateError } = await supabase.auth.updateUser({
-        data: { avatar_url: avatarUrl }
-      });
-      
-      if (authUpdateError) {
-        console.error("Error updating auth user with avatar:", authUpdateError);
-        throw authUpdateError;
       }
 
       console.log("Avatar updated successfully");

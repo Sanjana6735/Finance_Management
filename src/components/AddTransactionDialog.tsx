@@ -71,82 +71,10 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
       // Format amount with ₹ sign if not already present
       const formattedAmount = amount.startsWith("₹") ? amount : `₹${amount}`;
       
-      // Insert transaction into Supabase
-      const { data, error } = await supabase
-        .from('transactions')
-        .insert([
-          {
-            name,
-            amount: parseFloat(numericAmount),
-            type,
-            category,
-            date: date.toISOString(),
-            user_id: userId
-          }
-        ])
-        .select();
-      
-      if (error) {
-        console.error("Transaction insert error:", error);
-        throw error;
-      }
-      
-      // Update account balance when a transaction is created
-      if (type === "expense") {
-        // For expenses, decrease the account balance
-        const { data: accounts, error: accountsError } = await supabase
-          .from('accounts')
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: true })
-          .limit(1);
-
-        if (accountsError) {
-          console.error("Error fetching account:", accountsError);
-        } else if (accounts && accounts.length > 0) {
-          const account = accounts[0];
-          const newBalance = parseFloat(account.balance) - parseFloat(numericAmount);
-          
-          // Update the account balance
-          const { error: updateError } = await supabase
-            .from('accounts')
-            .update({ balance: newBalance })
-            .eq('id', account.id);
-            
-          if (updateError) {
-            console.error("Error updating account balance:", updateError);
-          }
-        }
-      } else if (type === "income") {
-        // For income, increase the account balance
-        const { data: accounts, error: accountsError } = await supabase
-          .from('accounts')
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: true })
-          .limit(1);
-
-        if (accountsError) {
-          console.error("Error fetching account:", accountsError);
-        } else if (accounts && accounts.length > 0) {
-          const account = accounts[0];
-          const newBalance = parseFloat(account.balance) + parseFloat(numericAmount);
-          
-          // Update the account balance
-          const { error: updateError } = await supabase
-            .from('accounts')
-            .update({ balance: newBalance })
-            .eq('id', account.id);
-            
-          if (updateError) {
-            console.error("Error updating account balance:", updateError);
-          }
-        }
-      }
-      
+      // Let the parent component handle the supabase insertion
       onAddTransaction({
         name,
-        amount: formattedAmount,
+        amount: numericAmount,
         type,
         category,
         date: format(date, "MMMM d, yyyy, h:mm a"),
@@ -160,14 +88,8 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
       setDate(new Date());
       setReceipt(null);
       
-      // Close dialog
-      onOpenChange(false);
+      // Close dialog - this will happen after onAddTransaction completes
       
-      // Show notification
-      toast({
-        title: "Transaction added",
-        description: "Your transaction has been successfully added",
-      });
     } catch (error) {
       console.error("Error adding transaction:", error);
       toast({

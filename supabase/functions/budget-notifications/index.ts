@@ -26,30 +26,31 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
     // Parse request body
-    const { budget_id, user_id, category, percentage_used } = await req.json();
+    const body = await req.json();
+    const { budget_id, user_id, category, percentage_used, email } = body;
+    
+    console.log("Received budget notification request:", body);
     
     if (!budget_id || !user_id || !category) {
       throw new Error('Missing required parameters');
     }
     
-    // Get user's email
-    const { data: userData, error: userError } = await supabase
-      .from('auth.users')
-      .select('email')
-      .eq('id', user_id)
-      .single();
+    // Use provided email or fetch user's email if not provided
+    let userEmail = email;
     
-    if (userError || !userData) {
-      console.log('Error fetching user data:', userError);
-      // Attempt to get user directly from auth.users table
+    if (!userEmail) {
+      console.log("Email not provided, fetching from auth.users");
+      // Try to get user's email from auth.users using admin functions
       const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(user_id);
       
       if (authError || !authUser?.user?.email) {
         throw new Error(`Unable to find user email: ${authError?.message || 'User not found'}`);
       }
       
-      userData = { email: authUser.user.email };
+      userEmail = authUser.user.email;
     }
+    
+    console.log(`User email for notifications: ${userEmail}`);
     
     // Get budget details
     const { data: budgetData, error: budgetError } = await supabase
@@ -82,72 +83,67 @@ serve(async (req) => {
       (new Date().getTime() - new Date(existingAlerts[0].created_at).getTime() > 24 * 60 * 60 * 1000);
     
     if (shouldSendAlert) {
-      console.log(`Sending budget alert for ${category} at ${percentage_used.toFixed(0)}% to ${userData.email}`);
+      console.log(`Sending budget alert for ${category} at ${percentage_used.toFixed(0)}% to ${userEmail}`);
       
-      // Call the send-budget-alert function
-      const response = await fetch(`${supabaseUrl}/functions/v1/send-budget-alert`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseServiceKey}`
-        },
-        body: JSON.stringify({
-          user_id,
-          email: userData.email,
-          category,
-          percentage_used,
-          spent: budgetData.spent,
-          total: budgetData.total,
-          currency: 'INR'
-        })
-      });
-      
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Failed to send budget alert: ${error}`);
-      }
-      
-      // Log the alert in the database
-      const { error: logError } = await supabase
-        .from('budget_alert_logs')
-        .insert({
-          user_id,
-          budget_id,
-          category,
-          percentage_used: thresholdRounded,
-          email_sent_to: userData.email
+      try {
+        // Call the send-budget-alert function
+        const response = await fetch(`${supabaseUrl}/functions/v1/send-budget-alert`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`
+          },
+          body: JSON.stringify({
+            user_id,
+            email: userEmail,
+            category,
+            percentage_used,
+            spent: budgetData.spent,
+            total: budgetData.total,
+            currency: 'INR'
+          })
         });
-      
-      if (logError) {
-        console.error('Error logging budget alert:', logError);
-      }
-      
-      // Add a notification for the user
-      const { error: notificationError } = await supabase
-        .from('notifications')
-        .insert({
-          user_id,
-          title: `Budget Alert: ${category}`,
-          message: `You've used ${percentage_used.toFixed(0)}% of your ${category} budget.`,
-          read: false
-        });
-      
-      if (notificationError) {
-        console.error('Error creating notification:', notificationError);
-      }
-      
-      const result = await response.json();
-      return new Response(
-        JSON.stringify({
-          success: true,
-          message: `Budget alert sent to ${userData.email}`,
-          details: result
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
+        
+        let result;
+        if (response.ok) {
+          result = await response.json();
+          console.log("Budget alert email sent:", result);
+        } else {
+          const errorText = await response.text();
+          console.error(`Failed to send budget alert: ${errorText}`);
+          throw new Error(`Failed to send budget alert: ${errorText}`);
         }
-      );
+        
+        // Log the alert in the database
+        const { error: logError } = await supabase
+          .from('budget_alert_logs')
+          .insert({
+            user_id,
+            budget_id,
+            category,
+            percentage_used: thresholdRounded,
+            email_sent_to: userEmail
+          });
+        
+        if (logError) {
+          console.error('Error logging budget alert:', logError);
+        }
+        
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: `Budget alert sent to ${userEmail}`,
+            details: result
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          }
+        );
+      } catch (error) {
+        console.error("Error in send-budget-alert:", error);
+        throw error;
+      }
     } else {
       console.log(`Skipping alert for ${category} - already sent recently`);
       
