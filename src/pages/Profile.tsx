@@ -30,46 +30,65 @@ const Profile = () => {
       
       setLoading(true);
       try {
+        console.log("Fetching profile for user ID:", userId);
+        
+        // Get user metadata from auth
+        const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+        
+        if (authError) throw authError;
+        
+        console.log("Auth user data:", authUser);
+        
         // First try to get from profiles table
         let { data: profiles, error } = await supabase
           .from('profiles')
           .select('*')
-          .eq('id', userId);
+          .eq('id', userId)
+          .limit(1);
         
         if (error) {
           console.error("Error fetching profile:", error);
-          // The table might not exist yet, so we'll create it if needed
-          if (error.message.includes("relation \"profiles\" does not exist")) {
-            // Create the profiles table
-            await createProfilesTable();
-            
-            // Wait a moment for the table to be created
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // Try again to see if we have a profile
+          // Create the profiles table if it doesn't exist
+          try {
+            await supabase
+              .from('profiles')
+              .upsert({
+                id: userId,
+                username: authUser?.user_metadata?.username || authUser?.email?.split('@')[0] || "",
+                full_name: authUser?.user_metadata?.full_name || "",
+                avatar_url: authUser?.user_metadata?.avatar_url || "",
+                updated_at: new Date().toISOString()
+              });
+              
+            // Fetch the profile again
             const { data: retryProfiles, error: retryError } = await supabase
               .from('profiles')
               .select('*')
-              .eq('id', userId);
+              .eq('id', userId)
+              .limit(1);
               
             if (retryError) {
-              console.error("Error fetching profile after table creation:", retryError);
+              console.error("Error fetching profile after creation:", retryError);
               profiles = null;
             } else {
               profiles = retryProfiles;
+              console.log("Profile created and fetched:", profiles);
             }
-          } else {
+          } catch (err) {
+            console.error("Error creating profile:", err);
             profiles = null;
           }
         }
 
         // Set data from profile or user auth data
         setUserData({
-          username: profiles?.[0]?.username || user?.user_metadata?.username || user?.email?.split('@')[0] || "",
-          fullName: profiles?.[0]?.full_name || user?.user_metadata?.full_name || "",
-          email: user?.email || "",
-          avatarUrl: profiles?.[0]?.avatar_url || user?.user_metadata?.avatar_url || ""
+          username: profiles?.[0]?.username || authUser?.user_metadata?.username || authUser?.email?.split('@')[0] || "",
+          fullName: profiles?.[0]?.full_name || authUser?.user_metadata?.full_name || "",
+          email: authUser?.email || "",
+          avatarUrl: profiles?.[0]?.avatar_url || authUser?.user_metadata?.avatar_url || ""
         });
+        
+        console.log("User data set:", userData);
       } catch (err) {
         console.error("Error fetching user data:", err);
         toast({
@@ -82,33 +101,10 @@ const Profile = () => {
       }
     };
 
-    fetchProfile();
-  }, [userId, user, toast]);
-
-  // Create profiles table if it doesn't exist
-  const createProfilesTable = async () => {
-    try {
-      // This is a workaround to check if we need to create the profiles table
-      // In real apps, you'd use migrations, but for this example we'll create it on the fly
-      
-      // Insert a profile for the current user
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({
-          id: userId,
-          username: user?.user_metadata?.username || user?.email?.split('@')[0] || "",
-          full_name: user?.user_metadata?.full_name || "",
-          avatar_url: user?.user_metadata?.avatar_url || "",
-          updated_at: new Date().toISOString()
-        });
-      
-      if (error && !error.message.includes("relation \"profiles\" does not exist")) {
-        console.error("Error creating profile:", error);
-      }
-    } catch (err) {
-      console.error("Error creating profiles table:", err);
+    if (userId) {
+      fetchProfile();
     }
-  };
+  }, [userId, user, toast]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,8 +112,11 @@ const Profile = () => {
 
     setSaving(true);
     try {
-      // Update profile in database
-      const { error } = await supabase
+      console.log("Updating profile for user ID:", userId);
+      console.log("Profile data to update:", userData);
+      
+      // Create the profiles table entry if it doesn't exist yet
+      const { error: upsertError } = await supabase
         .from('profiles')
         .upsert({
           id: userId,
@@ -127,17 +126,27 @@ const Profile = () => {
           updated_at: new Date().toISOString()
         });
 
-      if (error) throw error;
+      if (upsertError) {
+        console.error("Error upserting profile:", upsertError);
+        throw upsertError;
+      }
 
       // Also update user metadata
-      await supabase.auth.updateUser({
+      const { error: updateError } = await supabase.auth.updateUser({
         data: {
           username: userData.username,
           full_name: userData.fullName,
           avatar_url: userData.avatarUrl
         }
       });
+      
+      if (updateError) {
+        console.error("Error updating user metadata:", updateError);
+        throw updateError;
+      }
 
+      console.log("Profile updated successfully");
+      
       toast({
         title: "Profile updated",
         description: "Your profile information has been saved successfully.",
@@ -166,25 +175,31 @@ const Profile = () => {
 
     try {
       setSaving(true);
+      console.log("Uploading avatar for user ID:", userId);
 
       // Check if storage bucket exists, create if not
       const { data: buckets } = await supabase.storage.listBuckets();
       const avatarBucket = buckets?.find(b => b.name === 'avatars');
       
       if (!avatarBucket) {
+        console.log("Creating avatars bucket");
         await supabase.storage.createBucket('avatars', {
           public: true
         });
       }
 
       // Upload file
+      console.log("Uploading file to path:", filePath);
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, file, {
           upsert: true
         });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error("Error uploading avatar:", uploadError);
+        throw uploadError;
+      }
 
       // Get public URL
       const { data: urlData } = supabase.storage
@@ -193,6 +208,8 @@ const Profile = () => {
 
       // Update avatar URL in state and database
       const avatarUrl = urlData?.publicUrl;
+      console.log("Avatar uploaded, public URL:", avatarUrl);
+      
       setUserData({ ...userData, avatarUrl });
 
       // Update profile
@@ -204,13 +221,23 @@ const Profile = () => {
           updated_at: new Date().toISOString()
         });
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error("Error updating profile with avatar:", updateError);
+        throw updateError;
+      }
 
       // Update user metadata
-      await supabase.auth.updateUser({
+      const { error: authUpdateError } = await supabase.auth.updateUser({
         data: { avatar_url: avatarUrl }
       });
+      
+      if (authUpdateError) {
+        console.error("Error updating auth user with avatar:", authUpdateError);
+        throw authUpdateError;
+      }
 
+      console.log("Avatar updated successfully");
+      
       toast({
         title: "Avatar updated",
         description: "Your profile picture has been updated successfully.",

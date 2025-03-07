@@ -125,6 +125,8 @@ const TransactionList = () => {
     setError(null);
     
     try {
+      console.log("Fetching transactions for user ID:", userId);
+      
       const { data, error } = await supabase
         .from('transactions')
         .select('*')
@@ -136,6 +138,8 @@ const TransactionList = () => {
       }
       
       if (data) {
+        console.log("Fetched transactions:", data);
+        
         const formattedTransactions = data.map(item => ({
           id: item.id,
           name: item.name,
@@ -164,6 +168,8 @@ const TransactionList = () => {
     if (!userId || !category) return;
     
     try {
+      console.log(`Updating budget for category: ${category}, amount: ${amount}`);
+      
       const { data: budgets, error: budgetError } = await supabase
         .from('budgets')
         .select('*')
@@ -177,6 +183,9 @@ const TransactionList = () => {
       if (budgets && budgets.length > 0) {
         const budget = budgets[0];
         const newSpent = parseFloat(budget.spent) + amount;
+        const percentageUsed = (newSpent / budget.total) * 100;
+        
+        console.log(`Current budget: ${budget.spent}, New spent: ${newSpent}, Percentage: ${percentageUsed}%`);
         
         const { error: updateError } = await supabase
           .from('budgets')
@@ -187,15 +196,42 @@ const TransactionList = () => {
         
         console.log(`Budget for ${category} updated: ₹${newSpent}`);
         
+        // Trigger budget alert check if threshold is reached
+        if (percentageUsed >= 75) {
+          console.log(`Budget threshold reached: ${percentageUsed}%, sending alert for ${category}`);
+          
+          try {
+            // Call the budget-notifications edge function
+            const { data, error } = await supabase.functions.invoke('budget-notifications', {
+              body: {
+                budget_id: budget.id,
+                user_id: userId,
+                category: category,
+                percentage_used: percentageUsed
+              }
+            });
+            
+            if (error) {
+              console.error("Error sending budget alert:", error);
+            } else {
+              console.log("Budget alert response:", data);
+            }
+          } catch (alertError) {
+            console.error("Error sending budget alert:", alertError);
+          }
+        }
+        
         const event = new CustomEvent('budget-update');
         window.dispatchEvent(event);
+      } else {
+        console.log(`No budget found for category: ${category}`);
       }
     } catch (err) {
       console.error("Error updating budget:", err);
     }
   };
 
-  const handleAddTransaction = async (newTransaction: Omit<Transaction, "id">) => {
+  const handleAddTransaction = async (newTransaction: any) => {
     if (!userId) {
       toast({
         title: "Authentication error",
@@ -206,12 +242,23 @@ const TransactionList = () => {
     }
 
     try {
+      console.log("Adding new transaction:", newTransaction);
+      
+      // Parse the amount from the formatted string
       let numericAmount = newTransaction.amount;
-      if (numericAmount.startsWith('₹')) {
-        numericAmount = numericAmount.substring(1);
+      if (typeof numericAmount === 'string') {
+        if (numericAmount.startsWith('₹')) {
+          numericAmount = numericAmount.substring(1);
+        }
+        numericAmount = numericAmount.replace(/,/g, '');
       }
-      numericAmount = numericAmount.replace(/,/g, '');
       const parsedAmount = parseFloat(numericAmount);
+      
+      if (isNaN(parsedAmount)) {
+        throw new Error(`Invalid amount: ${newTransaction.amount}`);
+      }
+      
+      console.log(`Parsed amount: ${parsedAmount}`);
       
       const { data, error } = await supabase
         .from('transactions')
@@ -232,6 +279,8 @@ const TransactionList = () => {
       }
       
       if (data && data.length > 0) {
+        console.log("Transaction added successfully:", data[0]);
+        
         const formattedTransaction = {
           id: data[0].id,
           name: data[0].name,
@@ -241,7 +290,8 @@ const TransactionList = () => {
           date: formatDate(data[0].date)
         };
         
-        setTransactions([formattedTransaction, ...transactions]);
+        // Update the state with the new transaction
+        setTransactions(prevTransactions => [formattedTransaction, ...prevTransactions]);
         
         if (newTransaction.type === 'expense') {
           await updateBudget(newTransaction.category, parsedAmount);
@@ -254,14 +304,21 @@ const TransactionList = () => {
           description: `${newTransaction.name} has been added to your transactions.`,
         });
         
-        await supabase
-          .from('notifications')
-          .insert({
-            user_id: userId,
-            title: `New ${newTransaction.type}: ${newTransaction.name}`,
-            message: `You have ${newTransaction.type === 'expense' ? 'spent' : 'received'} ${newTransaction.amount} on ${newTransaction.name}`,
-            read: false
-          });
+        // Create a notification
+        try {
+          await supabase
+            .from('notifications')
+            .insert({
+              user_id: userId,
+              title: `New ${newTransaction.type}: ${newTransaction.name}`,
+              message: `You have ${newTransaction.type === 'expense' ? 'spent' : 'received'} ${formatAmount(parsedAmount)} on ${newTransaction.name}`,
+              read: false
+            });
+          
+          console.log("Transaction notification created");
+        } catch (notificationError) {
+          console.error("Error creating notification:", notificationError);
+        }
         
         const event = new CustomEvent('transaction-update');
         window.dispatchEvent(event);
@@ -280,6 +337,8 @@ const TransactionList = () => {
     if (!userId) return;
     
     try {
+      console.log(`Updating account balance: ${amount}, type: ${type}`);
+      
       const { data: accounts, error: accountsError } = await supabase
         .from('accounts')
         .select('*')
@@ -297,6 +356,8 @@ const TransactionList = () => {
           newBalance += amount;
         }
         
+        console.log(`Current balance: ${account.balance}, New balance: ${newBalance}`);
+        
         const { error: updateError } = await supabase
           .from('accounts')
           .update({ balance: newBalance })
@@ -305,6 +366,8 @@ const TransactionList = () => {
         if (updateError) throw updateError;
         
         console.log(`Account ${account.name} balance updated to: ₹${newBalance}`);
+      } else {
+        console.log("No account found for user");
       }
     } catch (err) {
       console.error("Error updating account balance:", err);
