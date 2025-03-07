@@ -1,10 +1,9 @@
-
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 serve(async (req) => {
@@ -14,166 +13,30 @@ serve(async (req) => {
   }
 
   try {
-    // Parse request
-    const body = await req.json().catch(() => ({}));
-    const isSummary = body.isSummary || false;
-    
-    console.log(`Budget cron job triggered. Summary mode: ${isSummary}`);
-    
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://zycfmehporlshbcpruvr.supabase.co';
+    // Get environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
     
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Missing Supabase credentials');
+    }
+    
+    // Create Supabase client with service role key
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Get all users
-    const { data: users, error: usersError } = await supabase
-      .from('profiles')
-      .select('id, email:auth.users!id(email), username, currency');
-      
-    if (usersError) {
-      throw new Error(`Error fetching users: ${usersError.message}`);
+    // Check if this is a weekly summary request
+    const { isWeeklySummary } = await req.json();
+    
+    // If it's a weekly summary, we'll generate summary emails for all users
+    if (isWeeklySummary) {
+      return await handleWeeklySummary(supabase, supabaseUrl, supabaseServiceKey, corsHeaders);
     }
     
-    console.log(`Found ${users.length} users to process`);
-    
-    // Process each user's budgets
-    let totalAlertsSent = 0;
-    const processedUsers = [];
-    
-    for (const user of users) {
-      try {
-        // Skip users without email
-        if (!user.email || !user.email[0]?.email) {
-          console.log(`User ${user.id} has no email, skipping`);
-          continue;
-        }
-        
-        const userEmail = user.email[0].email;
-        
-        // Get user's budgets
-        const { data: budgets, error: budgetsError } = await supabase
-          .from('budgets')
-          .select('*')
-          .eq('user_id', user.id);
-          
-        if (budgetsError) {
-          console.error(`Error fetching budgets for user ${user.id}: ${budgetsError.message}`);
-          continue;
-        }
-        
-        if (!budgets || budgets.length === 0) {
-          console.log(`No budgets found for user ${user.id}, skipping`);
-          continue;
-        }
-        
-        console.log(`Processing ${budgets.length} budgets for user ${user.id}`);
-        
-        // If this is a summary request, handle differently
-        if (isSummary) {
-          await processBudgetSummary(supabase, user, userEmail, budgets);
-          processedUsers.push(user.id);
-          continue;
-        }
-        
-        // Check each budget
-        for (const budget of budgets) {
-          const percentageUsed = (budget.spent / budget.total) * 100;
-          
-          // Check for threshold crossing (75%, 90%, 100%)
-          if (percentageUsed >= 75) {
-            // Check if we've already sent an alert for this threshold
-            const threshold = 
-              percentageUsed >= 100 ? 100 : 
-              percentageUsed >= 90 ? 90 : 75;
-              
-            const { data: existingAlerts } = await supabase
-              .from('budget_alert_logs')
-              .select('*')
-              .eq('user_id', user.id)
-              .eq('budget_id', budget.id)
-              .gte('percentage_used', threshold)
-              .order('created_at', { ascending: false })
-              .limit(1);
-              
-            // Skip if we've already sent an alert for this threshold in the last 24 hours
-            if (existingAlerts && existingAlerts.length > 0) {
-              const lastAlert = new Date(existingAlerts[0].created_at);
-              const now = new Date();
-              const hoursSinceLastAlert = (now.getTime() - lastAlert.getTime()) / (1000 * 60 * 60);
-              
-              if (hoursSinceLastAlert < 24) {
-                console.log(`Alert for budget ${budget.id} (${budget.category}) already sent in the last 24 hours, skipping`);
-                continue;
-              }
-            }
-            
-            // Send alert
-            console.log(`Sending alert for user ${user.id}, budget ${budget.id} (${budget.category}), percentage: ${percentageUsed.toFixed(2)}%`);
-            
-            const alertData = {
-              user_id: user.id,
-              budget_id: budget.id,
-              category: budget.category,
-              email: userEmail,
-              percentage_used: percentageUsed,
-              spent: budget.spent,
-              total: budget.total,
-              currency: user.currency || 'INR'
-            };
-            
-            // Call the send-budget-alert function
-            const sendAlertResponse = await fetch(
-              `${supabaseUrl}/functions/v1/send-budget-alert`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${supabaseServiceKey}`
-                },
-                body: JSON.stringify(alertData)
-              }
-            );
-            
-            if (sendAlertResponse.ok) {
-              // Log the alert in the budget_alert_logs table
-              await supabase
-                .from('budget_alert_logs')
-                .insert({
-                  user_id: user.id,
-                  email_sent_to: userEmail,
-                  budget_id: budget.id,
-                  category: budget.category,
-                  percentage_used: percentageUsed
-                });
-                
-              totalAlertsSent++;
-              console.log(`Alert sent successfully for budget ${budget.id} (${budget.category})`);
-            } else {
-              const errorText = await sendAlertResponse.text();
-              console.error(`Failed to send alert: ${errorText}`);
-            }
-          }
-        }
-        
-        processedUsers.push(user.id);
-      } catch (userError) {
-        console.error(`Error processing user ${user.id}: ${userError.message}`);
-      }
-    }
-    
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: `Budget check completed. Processed ${processedUsers.length} users, sent ${totalAlertsSent} alerts.`,
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-      }
-    );
+    // Otherwise, check all budgets for alerts
+    return await checkAllBudgets(supabase, supabaseUrl, supabaseServiceKey, corsHeaders);
   } catch (error) {
     console.error(`Error in budget-cron function: ${error.message}`);
+    
     return new Response(
       JSON.stringify({
         success: false,
@@ -187,44 +50,196 @@ serve(async (req) => {
   }
 });
 
-// Function to process weekly budget summaries
-async function processBudgetSummary(supabase, user, userEmail, budgets) {
-  console.log(`Processing weekly summary for user ${user.id}`);
+async function checkAllBudgets(supabase, supabaseUrl, supabaseServiceKey, corsHeaders) {
+  console.log('Checking all budgets for alerts...');
   
-  try {
-    const summaryData = {
-      user_id: user.id,
-      email: userEmail,
-      budgets: budgets.map(budget => ({
+  // Get all budgets with relevant thresholds
+  const { data: budgets, error: budgetsError } = await supabase
+    .from('budgets')
+    .select('*');
+  
+  if (budgetsError) {
+    throw new Error(`Error fetching budgets: ${budgetsError.message}`);
+  }
+  
+  console.log(`Found ${budgets.length} budgets to check`);
+  
+  // Track alerts sent
+  const alertsSent = [];
+  const errors = [];
+  
+  // Check each budget and send alerts if thresholds reached
+  for (const budget of budgets) {
+    try {
+      const percentageUsed = (budget.spent / budget.total) * 100;
+      
+      // Check if percentage has crossed important thresholds (75%, 90%, 100%)
+      if (
+        percentageUsed >= 75 && 
+        (
+          percentageUsed >= (100) || 
+          percentageUsed >= (90) || 
+          percentageUsed >= (75)
+        )
+      ) {
+        console.log(`Budget for ${budget.category} at ${percentageUsed.toFixed(0)}% - sending alert`);
+        
+        // Call the budget-notifications function
+        const response = await fetch(`${supabaseUrl}/functions/v1/budget-notifications`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`
+          },
+          body: JSON.stringify({
+            budget_id: budget.id,
+            user_id: budget.user_id,
+            category: budget.category,
+            percentage_used: percentageUsed
+          })
+        });
+        
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`Failed to send budget notification: ${error}`);
+        }
+        
+        alertsSent.push({
+          category: budget.category,
+          percentage: percentageUsed.toFixed(0),
+          user_id: budget.user_id
+        });
+      }
+    } catch (error) {
+      console.error(`Error processing budget ${budget.id}:`, error);
+      errors.push({
+        budget_id: budget.id,
         category: budget.category,
-        spent: budget.spent,
-        total: budget.total,
-        percentage: (budget.spent / budget.total) * 100
-      })),
-      currency: user.currency || 'INR',
-      is_summary: true
-    };
-    
-    // Call the send-budget-alert function with summary data
-    const response = await fetch(
-      `${supabase.supabaseUrl}/functions/v1/send-budget-alert`,
-      {
+        error: error.message
+      });
+    }
+  }
+  
+  return new Response(
+    JSON.stringify({
+      success: true,
+      message: `Budget check completed - sent ${alertsSent.length} alerts`,
+      alerts_sent: alertsSent,
+      errors: errors
+    }),
+    {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200,
+    }
+  );
+}
+
+async function handleWeeklySummary(supabase, supabaseUrl, supabaseServiceKey, corsHeaders) {
+  console.log('Generating weekly budget summaries...');
+  
+  // Get distinct user IDs with budgets
+  const { data: users, error: usersError } = await supabase
+    .from('budgets')
+    .select('user_id')
+    .distinct();
+  
+  if (usersError) {
+    throw new Error(`Error fetching users with budgets: ${usersError.message}`);
+  }
+  
+  console.log(`Found ${users.length} users for weekly summaries`);
+  
+  const summariesSent = [];
+  const errors = [];
+  
+  // Generate summary for each user
+  for (const user of users) {
+    try {
+      // Get all budgets for this user
+      const { data: userBudgets, error: budgetsError } = await supabase
+        .from('budgets')
+        .select('*')
+        .eq('user_id', user.user_id);
+      
+      if (budgetsError) {
+        throw new Error(`Error fetching budgets for user: ${budgetsError.message}`);
+      }
+      
+      // Get user's email
+      const { data: userData, error: userError } = await supabase.auth.admin.getUserById(user.user_id);
+      
+      if (userError || !userData?.user?.email) {
+        throw new Error(`Unable to find user email: ${userError?.message || 'User not found'}`);
+      }
+      
+      const userEmail = userData.user.email;
+      
+      console.log(`Generating weekly summary for ${userEmail} with ${userBudgets.length} budgets`);
+      
+      // Call the send-budget-alert function with the summary flag
+      const response = await fetch(`${supabaseUrl}/functions/v1/send-budget-alert`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabase.supabaseKey}`
+          'Authorization': `Bearer ${supabaseServiceKey}`
         },
-        body: JSON.stringify(summaryData)
+        body: JSON.stringify({
+          user_id: user.user_id,
+          email: userEmail,
+          is_summary: true,
+          budgets: userBudgets.map(budget => ({
+            category: budget.category,
+            spent: budget.spent,
+            total: budget.total,
+            percentage: (budget.spent / budget.total) * 100
+          })),
+          currency: 'INR'
+        })
+      });
+      
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Failed to send weekly summary: ${error}`);
       }
-    );
-    
-    if (response.ok) {
-      console.log(`Weekly summary sent successfully for user ${user.id}`);
-    } else {
-      const errorText = await response.text();
-      console.error(`Failed to send weekly summary: ${errorText}`);
+      
+      // Add a notification for the user
+      const { error: notificationError } = await supabase
+        .from('notifications')
+        .insert({
+          user_id: user.user_id,
+          title: "Weekly Budget Summary",
+          message: "Your weekly budget summary is ready. Check your email for details.",
+          read: false
+        });
+      
+      if (notificationError) {
+        console.error('Error creating notification:', notificationError);
+      }
+      
+      summariesSent.push({
+        user_id: user.user_id,
+        email: userEmail,
+        budgets_count: userBudgets.length
+      });
+    } catch (error) {
+      console.error(`Error processing summary for user ${user.user_id}:`, error);
+      errors.push({
+        user_id: user.user_id,
+        error: error.message
+      });
     }
-  } catch (error) {
-    console.error(`Error sending summary for user ${user.id}: ${error.message}`);
   }
+  
+  return new Response(
+    JSON.stringify({
+      success: true,
+      message: `Weekly summaries completed - sent ${summariesSent.length} summaries`,
+      summaries_sent: summariesSent,
+      errors: errors
+    }),
+    {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200,
+    }
+  );
 }

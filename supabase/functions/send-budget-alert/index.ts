@@ -68,6 +68,13 @@ serve(async (req) => {
     
     console.log(`Email generated successfully for ${email}`);
     
+    // Call a mock email service or log to console (for demonstration)
+    console.log("========= EMAIL WOULD BE SENT =========");
+    console.log(`To: ${email}`);
+    console.log(`Subject: ${emailSubject}`);
+    console.log(`Content: ${emailContent}`);
+    console.log("======================================");
+    
     return new Response(
       JSON.stringify({
         success: true,
