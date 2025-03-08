@@ -77,6 +77,14 @@ const getCategoryIcon = (category: string) => {
       return <Film size={16} />;
     case "personal":
       return <User size={16} />;
+    case "emi":
+      return <DollarSign size={16} />;
+    case "salary":
+      return <DollarSign size={16} />;
+    case "investments":
+      return <DollarSign size={16} />;
+    case "freelance":
+      return <Briefcase size={16} />;
     case "other":
       return <Briefcase size={16} />;
     default:
@@ -292,7 +300,11 @@ const TransactionList = () => {
       console.log(`Parsed amount: ${parsedAmount}`);
       
       // Make sure the category is valid and properly formatted
-      const validCategories = ['shopping', 'food', 'housing', 'transport', 'healthcare', 'education', 'entertainment', 'personal', 'other'];
+      const validCategories = [
+        'shopping', 'food', 'housing', 'transport', 'healthcare', 
+        'education', 'entertainment', 'personal', 'emi', 'other',
+        'salary', 'investments', 'freelance'
+      ];
       const standardizedCategory = newTransaction.category.toLowerCase();
       
       if (!validCategories.includes(standardizedCategory)) {

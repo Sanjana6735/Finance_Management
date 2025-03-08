@@ -209,6 +209,10 @@ const Transactions = () => {
                     <SelectItem value="education">Education</SelectItem>
                     <SelectItem value="entertainment">Entertainment</SelectItem>
                     <SelectItem value="personal">Personal</SelectItem>
+                    <SelectItem value="emi">EMI</SelectItem>
+                    <SelectItem value="salary">Salary</SelectItem>
+                    <SelectItem value="investments">Investments</SelectItem>
+                    <SelectItem value="freelance">Freelance</SelectItem>
                     <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>
@@ -237,22 +241,23 @@ const Transactions = () => {
             </div>
           </div>
         </div>
-        
-        <div className="mt-6 opacity-0 animate-on-mount animation-delay-200">
-          <TransactionList />
-        </div>
-      </main>
-      <footer className="container mx-auto px-4 py-6 mt-8 border-t text-center text-muted-foreground">
-        <p>© 2025 Wealth Finance App. All rights reserved.</p>
-      </footer>
+      </div>
+      
+      <div className="mt-6 opacity-0 animate-on-mount animation-delay-200">
+        <TransactionList />
+      </div>
+    </main>
+    <footer className="container mx-auto px-4 py-6 mt-8 border-t text-center text-muted-foreground">
+      <p>© 2025 Wealth Finance App. All rights reserved.</p>
+    </footer>
 
-      <AddTransactionDialog 
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        onAddTransaction={handleAddTransaction}
-      />
-    </div>
-  );
+    <AddTransactionDialog 
+      open={dialogOpen}
+      onOpenChange={setDialogOpen}
+      onAddTransaction={handleAddTransaction}
+    />
+  </div>
+);
 };
 
 export default Transactions;

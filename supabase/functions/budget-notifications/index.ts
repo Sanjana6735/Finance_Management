@@ -47,6 +47,25 @@ serve(async (req) => {
 
     console.log(`Processing budget alert for ${category}, ${percentage_used.toFixed(0)}% used`);
 
+    // Log the alert in the budget_alert_logs table
+    const { data: logData, error: logError } = await supabase
+      .from("budget_alert_logs")
+      .insert([
+        {
+          user_id: user_id,
+          budget_id: budget_id,
+          category: category,
+          percentage_used: percentage_used,
+          email_sent_to: email
+        }
+      ]);
+
+    if (logError) {
+      console.error("Error logging budget alert:", logError);
+    } else {
+      console.log("Budget alert logged:", logData);
+    }
+
     // Insert notification into the notifications table
     const { data: notificationData, error: notificationError } = await supabase
       .from("notifications")
@@ -56,34 +75,19 @@ serve(async (req) => {
           title: "Budget Alert",
           message: `You've used ${percentage_used.toFixed(0)}% of your ${category} budget.`,
           type: "budget",
-        },
-      ])
-      .select();
+          read: false
+        }
+      ]);
 
     if (notificationError) {
       console.error("Error creating notification:", notificationError);
-      // Don't fail the whole function if just notification fails
     } else {
       console.log("Budget notification created:", notificationData);
     }
 
-    // Prepare email content
-    const emailHTML = `
-      <html>
-        <body>
-          <h1>Budget Alert</h1>
-          <p>Hello,</p>
-          <p>Your ${category} budget has reached ${percentage_used.toFixed(0)}% of the limit.</p>
-          <p>This is a friendly reminder to check your spending.</p>
-          <p>View your budget: <a href="https://finance-dashboard.com/budgets">Finance Dashboard</a></p>
-          <p>Thank you,<br>Finance Dashboard Team</p>
-        </body>
-      </html>
-    `;
-
-    // Call our new email sending function
-    const emailResponse = await fetch(
-      `${supabaseUrl}/functions/v1/send-email`,
+    // Call the send-budget-alert function to send an email
+    const alertResponse = await fetch(
+      `${supabaseUrl}/functions/v1/send-budget-alert`,
       {
         method: "POST",
         headers: {
@@ -91,23 +95,22 @@ serve(async (req) => {
           Authorization: `Bearer ${supabaseKey}`,
         },
         body: JSON.stringify({
-          to: email,
-          subject: `Budget Alert: ${category} Budget at ${percentage_used.toFixed(0)}%`,
-          html: emailHTML,
-          user_id: user_id,
-          email_type: "budget_alert"
+          email: email,
+          category: category,
+          percentage_used: percentage_used,
+          user_id: user_id
         }),
       }
     );
     
-    const emailResult = await emailResponse.json();
-    console.log("Email sending result:", emailResult);
+    const alertResult = await alertResponse.json();
+    console.log("Email sending result:", alertResult);
 
     return new Response(
       JSON.stringify({
         message: "Budget alert processed successfully",
         notification: notificationData || null,
-        email: emailResult,
+        email: alertResult,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -94,8 +94,8 @@ serve(async (req) => {
             user_id: user_id,
             email_to: to,
             subject: subject,
-            email_type: email_type,
             content: html,
+            email_type: email_type,
           },
         ]);
 

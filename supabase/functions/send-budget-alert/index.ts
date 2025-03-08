@@ -56,7 +56,7 @@ serve(async (req) => {
       </html>
     `;
 
-    // Call our new email sending function
+    // Call our email sending function
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -82,6 +82,27 @@ serve(async (req) => {
     
     const emailResult = await emailResponse.json();
     console.log("Email sending result:", emailResult);
+
+    // Log the sent email
+    try {
+      const { data: logData, error: logError } = await supabase
+        .from("email_logs")
+        .insert([
+          {
+            user_id: user_id,
+            email_to: email,
+            subject: `Budget Alert: ${category} Budget at ${percentage_used.toFixed(0)}%`,
+            content: emailHTML,
+            email_type: "budget_alert"
+          }
+        ]);
+
+      if (logError) {
+        console.error("Error logging email:", logError);
+      }
+    } catch (error) {
+      console.error("Error with email logging:", error);
+    }
 
     return new Response(
       JSON.stringify({

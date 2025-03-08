@@ -126,6 +126,66 @@ export type Database = {
         }
         Relationships: []
       }
+      email_logs: {
+        Row: {
+          content: string
+          email_to: string
+          email_type: string
+          id: string
+          sent_at: string
+          subject: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          email_to: string
+          email_type: string
+          id?: string
+          sent_at?: string
+          subject: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          email_to?: string
+          email_type?: string
+          id?: string
+          sent_at?: string
+          subject?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          read: boolean | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          read?: boolean | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          read?: boolean | null
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       transactions: {
         Row: {
           amount: number
