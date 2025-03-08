@@ -72,8 +72,10 @@ serve(async (req) => {
       .insert([
         {
           user_id: user_id,
-          title: "Budget Alert",
-          message: `You've used ${percentage_used.toFixed(0)}% of your ${category} budget.`,
+          title: percentage_used >= 100 ? "Budget Exceeded" : "Budget Alert",
+          message: percentage_used >= 100 
+            ? `You've exceeded your ${category} budget.` 
+            : `You've used ${percentage_used.toFixed(0)}% of your ${category} budget.`,
           type: "budget",
           read: false
         }
@@ -102,6 +104,12 @@ serve(async (req) => {
         }),
       }
     );
+    
+    if (!alertResponse.ok) {
+      const errorText = await alertResponse.text();
+      console.error(`Error from send-budget-alert: ${alertResponse.status} ${errorText}`);
+      throw new Error(`Error from send-budget-alert: ${alertResponse.status} ${errorText}`);
+    }
     
     const alertResult = await alertResponse.json();
     console.log("Email sending result:", alertResult);

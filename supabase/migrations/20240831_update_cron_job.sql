@@ -51,6 +51,45 @@ SELECT cron.schedule(
   $$
 );
 
+-- Add a separate cron job specifically for checking 100% exceeded budgets (runs every hour)
+SELECT cron.schedule(
+  'hourly-budget-exceeded-alerts',  -- name of the cron job
+  '0 * * * *',                      -- run at the start of every hour (cron syntax)
+  $$
+  -- Get all budgets where usage is >= 100%
+  WITH budget_alerts AS (
+    SELECT 
+      b.id as budget_id,
+      b.user_id,
+      b.category,
+      b.total,
+      b.spent,
+      (b.spent / b.total * 100) as percentage_used,
+      u.email
+    FROM 
+      public.budgets b
+      JOIN auth.users u ON b.user_id = u.id
+    WHERE 
+      b.spent / b.total >= 1.0
+  )
+  
+  -- For each exceeded budget, call the edge function
+  SELECT
+    net.http_post(
+      url:='https://zycfmehporlshbcpruvr.supabase.co/functions/v1/budget-notifications',
+      headers:='{"Content-Type": "application/json", "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5Y2ZtZWhwb3Jsc2hiY3BydXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDA3NjcyNTQsImV4cCI6MjA1NjM0MzI1NH0.W2pB_8MJ8mHCXXFLZ5avaZrS20d2JbXbH3tr57j6wus"}'::jsonb,
+      body:=json_build_object(
+        'budget_id', budget_id,
+        'user_id', user_id,
+        'category', category,
+        'percentage_used', percentage_used,
+        'email', email
+      )::jsonb
+    ) as request_id
+  FROM budget_alerts;
+  $$
+);
+
 -- Recreate weekly summary job with improved email functionality
 SELECT cron.schedule(
   'weekly-budget-summaries',  -- name of the cron job
@@ -172,3 +211,21 @@ SELECT cron.schedule(
   $$;
   $$
 );
+
+-- Create or update budget_alert_logs table if it doesn't exist
+CREATE TABLE IF NOT EXISTS public.budget_alert_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users NOT NULL,
+  budget_id UUID REFERENCES public.budgets NOT NULL,
+  category TEXT NOT NULL,
+  percentage_used DECIMAL(12, 2) NOT NULL,
+  email_sent_to TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+-- Add RLS policies to budget_alert_logs table
+ALTER TABLE public.budget_alert_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY IF NOT EXISTS "Users can view their own budget alert logs"
+ON public.budget_alert_logs FOR SELECT
+USING (auth.uid() = user_id);

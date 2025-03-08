@@ -40,17 +40,38 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Sending budget alert email to ${email} for ${category}`);
+    console.log(`Sending budget alert email to ${email} for ${category} - ${percentage_used}% used`);
+
+    // Different messages for different threshold levels
+    let alertTitle = "Budget Alert";
+    let alertMessage = `Your ${category} budget has reached ${percentage_used.toFixed(0)}% of the limit.`;
+    
+    if (percentage_used >= 100) {
+      alertTitle = "Budget Exceeded";
+      alertMessage = `Your ${category} budget has been exceeded. You've spent ${percentage_used.toFixed(0)}% of your allocated limit.`;
+    } else if (percentage_used >= 90) {
+      alertTitle = "Budget Nearly Exceeded";
+      alertMessage = `Your ${category} budget is nearly depleted at ${percentage_used.toFixed(0)}% of the limit.`;
+    }
 
     // Prepare email content
     const emailHTML = `
       <html>
-        <body>
-          <h1>Budget Alert</h1>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background-color: ${percentage_used >= 100 ? '#f8d7da' : '#d4edda'}; border-radius: 5px; padding: 20px; margin-bottom: 20px;">
+            <h1 style="color: ${percentage_used >= 100 ? '#721c24' : '#155724'}; margin-top: 0;">${alertTitle}</h1>
+            <p style="font-size: 16px;">${alertMessage}</p>
+          </div>
           <p>Hello,</p>
-          <p>Your ${category} budget has reached ${percentage_used.toFixed(0)}% of the limit.</p>
-          <p>This is a friendly reminder to check your spending.</p>
-          <p>View your budget: <a href="https://finance-dashboard.com/budgets">Finance Dashboard</a></p>
+          <p>This is a friendly reminder to check your spending on ${category}.</p>
+          <p>You have spent ${percentage_used.toFixed(0)}% of your budget for this category.</p>
+          ${percentage_used >= 100 ? 
+            '<p style="color: #721c24; font-weight: bold;">You have exceeded your budget limit. Consider reviewing your spending or adjusting your budget.</p>' : 
+            ''
+          }
+          <div style="margin: 30px 0; text-align: center;">
+            <a href="https://finance-dashboard.com/budgets" style="background-color: #4CAF50; color: white; padding: 12px 25px; text-decoration: none; border-radius: 4px; font-weight: bold;">View your budget</a>
+          </div>
           <p>Thank you,<br>Finance Dashboard Team</p>
         </body>
       </html>
@@ -72,13 +93,19 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           to: email,
-          subject: `Budget Alert: ${category} Budget at ${percentage_used.toFixed(0)}%`,
+          subject: `${alertTitle}: ${category} Budget at ${percentage_used.toFixed(0)}%`,
           html: emailHTML,
           user_id: user_id,
           email_type: "budget_alert"
         }),
       }
     );
+    
+    if (!emailResponse.ok) {
+      const errorText = await emailResponse.text();
+      console.error(`Error from send-email: ${emailResponse.status} ${errorText}`);
+      throw new Error(`Failed to send email: ${emailResponse.status} ${errorText}`);
+    }
     
     const emailResult = await emailResponse.json();
     console.log("Email sending result:", emailResult);
@@ -91,7 +118,7 @@ serve(async (req) => {
           {
             user_id: user_id,
             email_to: email,
-            subject: `Budget Alert: ${category} Budget at ${percentage_used.toFixed(0)}%`,
+            subject: `${alertTitle}: ${category} Budget at ${percentage_used.toFixed(0)}%`,
             content: emailHTML,
             email_type: "budget_alert"
           }
@@ -99,6 +126,8 @@ serve(async (req) => {
 
       if (logError) {
         console.error("Error logging email:", logError);
+      } else {
+        console.log("Email logged to database:", logData);
       }
     } catch (error) {
       console.error("Error with email logging:", error);
