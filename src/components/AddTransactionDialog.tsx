@@ -172,7 +172,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
               <Label htmlFor="category">Category</Label>
               <Select 
                 value={category} 
-                onValueChange={(value) => setCategory(value.toLowerCase())}
+                onValueChange={(value) => setCategory(value)}
               >
                 <SelectTrigger id="category" className="mt-1">
                   <SelectValue placeholder="Select category" />
@@ -186,6 +186,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
                   <SelectItem value="education">Education</SelectItem>
                   <SelectItem value="entertainment">Entertainment</SelectItem>
                   <SelectItem value="personal">Personal</SelectItem>
+                  <SelectItem value="emi">EMI/Loan</SelectItem>
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>

@@ -264,6 +264,19 @@ const Payments = () => {
       const cleanAmount = formData.amount.replace('₹', '').replace(/,/g, '');
       const amount = parseFloat(cleanAmount);
       
+      // Create future date object based on formData.date
+      const paymentDate = new Date(formData.date);
+      
+      // Only proceed if paymentDate is valid
+      if (isNaN(paymentDate.getTime())) {
+        toast({
+          title: "Invalid date",
+          description: "Please select a valid date.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
       // Add to transactions table with the correct category
       const { data, error } = await supabase
         .from('transactions')
@@ -272,7 +285,7 @@ const Payments = () => {
           amount: amount,
           type: 'expense',
           category: 'emi', // Using 'emi' instead of previous values
-          date: new Date(formData.date).toISOString(),
+          date: paymentDate.toISOString(),
           user_id: userId,
         }])
         .select();

@@ -42,8 +42,7 @@ serve(async (req) => {
 
     console.log(`Sending budget alert email to ${email} for ${category}`);
 
-    // For demo purposes, we'll log the email content
-    // In a real app, you would use a service like Resend or SendGrid
+    // Prepare email content
     const emailHTML = `
       <html>
         <body>
@@ -57,41 +56,32 @@ serve(async (req) => {
       </html>
     `;
 
-    // Log the email that would be sent
-    console.log("------ BUDGET ALERT EMAIL ------");
-    console.log(`To: ${email}`);
-    console.log(`Subject: Budget Alert: ${category} Budget at ${percentage_used.toFixed(0)}%`);
-    console.log(`Body: ${emailHTML}`);
-    console.log("--------------------------------");
-
-    // Store this email log in the database
+    // Call our new email sending function
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Let's create an email_logs table to track these
-    try {
-      const { data: logData, error: logError } = await supabase
-        .from("email_logs")
-        .insert([
-          {
-            user_id: user_id,
-            email_to: email,
-            subject: `Budget Alert: ${category} Budget at ${percentage_used.toFixed(0)}%`,
-            email_type: "budget_alert",
-            content: emailHTML,
-          },
-        ]);
-
-      if (logError) {
-        console.error("Error logging email:", logError);
-      } else {
-        console.log("Email logged to database:", logData);
+    // Call the send-email function
+    const emailResponse = await fetch(
+      `${supabaseUrl}/functions/v1/send-email`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({
+          to: email,
+          subject: `Budget Alert: ${category} Budget at ${percentage_used.toFixed(0)}%`,
+          html: emailHTML,
+          user_id: user_id,
+          email_type: "budget_alert"
+        }),
       }
-    } catch (logError) {
-      console.error("Error with email logging:", logError);
-      // If this table doesn't exist, we'll just continue without logging
-    }
+    );
+    
+    const emailResult = await emailResponse.json();
+    console.log("Email sending result:", emailResult);
 
     return new Response(
       JSON.stringify({

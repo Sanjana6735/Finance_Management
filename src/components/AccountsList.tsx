@@ -112,6 +112,17 @@ const AccountsList = ({ className }: AccountsListProps) => {
     };
     
     fetchAccounts();
+    
+    // Set up a listener to refresh accounts when transactions are added
+    const handleTransactionUpdate = () => {
+      fetchAccounts();
+    };
+    
+    window.addEventListener('transaction-update', handleTransactionUpdate);
+    
+    return () => {
+      window.removeEventListener('transaction-update', handleTransactionUpdate);
+    };
   }, [userId, toast]);
 
   const handleChange = (field: string, value: string) => {

@@ -67,9 +67,23 @@ serve(async (req) => {
       console.log("Budget notification created:", notificationData);
     }
 
-    // Call the email sending function
+    // Prepare email content
+    const emailHTML = `
+      <html>
+        <body>
+          <h1>Budget Alert</h1>
+          <p>Hello,</p>
+          <p>Your ${category} budget has reached ${percentage_used.toFixed(0)}% of the limit.</p>
+          <p>This is a friendly reminder to check your spending.</p>
+          <p>View your budget: <a href="https://finance-dashboard.com/budgets">Finance Dashboard</a></p>
+          <p>Thank you,<br>Finance Dashboard Team</p>
+        </body>
+      </html>
+    `;
+
+    // Call our new email sending function
     const emailResponse = await fetch(
-      `${supabaseUrl}/functions/v1/send-budget-alert`,
+      `${supabaseUrl}/functions/v1/send-email`,
       {
         method: "POST",
         headers: {
@@ -77,10 +91,11 @@ serve(async (req) => {
           Authorization: `Bearer ${supabaseKey}`,
         },
         body: JSON.stringify({
-          email: email,
-          category: category,
-          percentage_used: percentage_used,
+          to: email,
+          subject: `Budget Alert: ${category} Budget at ${percentage_used.toFixed(0)}%`,
+          html: emailHTML,
           user_id: user_id,
+          email_type: "budget_alert"
         }),
       }
     );
