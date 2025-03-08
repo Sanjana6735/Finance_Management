@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
@@ -556,37 +555,6 @@ const TransactionList = () => {
       window.removeEventListener('refresh-transactions', handleRefreshEvent);
     };
   }, [userId]);
-
-  const handleDownload = () => {
-    const headers = ["Id", "Name", "Amount", "Type", "Category", "Date"];
-    const csvContent = [
-      headers.join(","),
-      ...transactions.map(transaction => 
-        [
-          transaction.id,
-          transaction.name,
-          transaction.amount,
-          transaction.type,
-          transaction.category,
-          transaction.date
-        ].join(",")
-      )
-    ].join("\n");
-    
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", "transactions.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    toast({
-      title: "Download complete",
-      description: "Your transactions have been downloaded as a CSV file.",
-    });
-  };
 
   if (isLoading && transactions.length === 0) {
     return (
