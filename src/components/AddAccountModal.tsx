@@ -20,14 +20,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PlusCircle } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
+import { useAuth } from "./AuthProvider";
+import { supabase } from "@/integrations/supabase/client";
+
+type AccountType = "bank" | "credit" | "investment" | "loan";
 
 const AddAccountModal = () => {
+  const { toast } = useToast();
+  const { userId } = useAuth();
   const [open, setOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     accountType: "",
     name: "",
     balance: "",
-    accountNumber: "",
+    cardNumber: "",
   });
 
   const handleChange = (field: string, value: string) => {
@@ -37,17 +45,79 @@ const AddAccountModal = () => {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle account creation logic here
-    console.log("Form submitted with:", formData);
-    setOpen(false);
-    setFormData({
-      accountType: "",
-      name: "",
-      balance: "",
-      accountNumber: "",
-    });
+    
+    // Validate form
+    if (!formData.accountType || !formData.name || !formData.balance) {
+      toast({
+        title: "Missing information",
+        description: "Please fill in all required fields.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    if (!userId) {
+      toast({
+        title: "Authentication error",
+        description: "You must be logged in to add an account.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setIsLoading(true);
+    
+    try {
+      // Prepare account data for insertion
+      const accountType = formData.accountType as AccountType;
+      const numericBalance = formData.balance.replace(/[₹,\s]/g, '');
+      
+      const newAccount = {
+        name: formData.name,
+        balance: parseFloat(numericBalance),
+        type: accountType,
+        card_number: formData.cardNumber || null,
+        user_id: userId
+      };
+      
+      // Insert into Supabase
+      const { data, error } = await supabase
+        .from('accounts')
+        .insert([newAccount])
+        .select();
+        
+      if (error) throw error;
+      
+      // Reset form and close dialog
+      setFormData({
+        accountType: "",
+        name: "",
+        balance: "",
+        cardNumber: "",
+      });
+      
+      setOpen(false);
+      
+      toast({
+        title: "Account successfully added",
+        description: "Your new account has been added to your profile.",
+      });
+      
+      // Dispatch event to trigger account list refresh
+      window.dispatchEvent(new Event('account-update'));
+      
+    } catch (err) {
+      console.error("Error adding account:", err);
+      toast({
+        title: "Error",
+        description: "Failed to add account. Please try again later.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -103,18 +173,20 @@ const AddAccountModal = () => {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="accountNumber">Account Number (Last 4 digits)</Label>
+              <Label htmlFor="cardNumber">Account Number (Last 4 digits)</Label>
               <Input
-                id="accountNumber"
-                value={formData.accountNumber}
-                onChange={(e) => handleChange("accountNumber", e.target.value)}
+                id="cardNumber"
+                value={formData.cardNumber}
+                onChange={(e) => handleChange("cardNumber", e.target.value)}
                 placeholder="e.g. 1234"
                 maxLength={4}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button type="submit">Add Account</Button>
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? "Adding..." : "Add Account"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
