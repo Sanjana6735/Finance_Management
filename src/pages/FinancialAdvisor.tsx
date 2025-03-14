@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Bot, Sparkles, User } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Message {
   role: 'user' | 'assistant';
@@ -23,7 +24,7 @@ const FinancialAdvisor = () => {
     }
   ]);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!input.trim()) return;
     
     // Add user message
@@ -32,31 +33,48 @@ const FinancialAdvisor = () => {
     setInput('');
     setLoading(true);
     
-    // Simulate AI response (in a real app, this would call an API)
-    setTimeout(() => {
-      let response = "";
-      
-      if (input.toLowerCase().includes('budget')) {
-        response = "Based on your financial profile, I recommend allocating 50% of your income to necessities (housing, food, utilities), 30% to discretionary spending (entertainment, dining out), and 20% to savings and debt repayment. This 50/30/20 rule can help you maintain financial discipline while still enjoying life.";
-      } else if (input.toLowerCase().includes('invest') || input.toLowerCase().includes('investment')) {
-        response = "For your investment strategy, I recommend a diversified portfolio with 60% in low-cost index funds, 20% in bonds for stability, 15% in international stocks for diversification, and 5% in alternative investments. This balanced approach aligns with your long-term financial goals while managing risk.";
-      } else if (input.toLowerCase().includes('debt') || input.toLowerCase().includes('loan')) {
-        response = "To effectively manage your debt, prioritize high-interest loans first (like credit cards) while making minimum payments on others. Consider the debt avalanche method - targeting debts with the highest interest rates first to minimize what you pay in interest over time.";
-      } else if (input.toLowerCase().includes('save') || input.toLowerCase().includes('saving')) {
-        response = "I recommend building an emergency fund of 3-6 months of expenses before focusing on other financial goals. Automate your savings by setting up automatic transfers to a high-yield savings account each payday, aiming to save at least 10-15% of your income.";
-      } else {
-        response = "I'd be happy to help with that. Based on your current financial situation, including your income sources, expenses, and savings habits, I can suggest personalized strategies to help you reach your financial goals. Would you like recommendations on budgeting, investing, debt management, or retirement planning?";
+    try {
+      // Call the Supabase edge function to get financial advice
+      const { data, error } = await supabase.functions.invoke('financial-advice', {
+        body: { query: input }
+      });
+
+      if (error) {
+        console.error("Error calling financial-advice function:", error);
+        throw new Error(error.message || "Failed to get financial advice");
       }
+
+      // Add the AI response to the chat
+      const assistantMessage = { 
+        role: 'assistant' as const, 
+        content: data?.response || "I apologize, but I'm unable to process your request at the moment. Please try again later."
+      };
       
-      const assistantMessage = { role: 'assistant' as const, content: response };
       setMessages(prev => [...prev, assistantMessage]);
-      setLoading(false);
       
       toast({
         title: "AI Response Generated",
         description: "Your financial advice has been generated."
       });
-    }, 1500);
+    } catch (error) {
+      console.error("Error in handleSendMessage:", error);
+      
+      // Add error message to the chat
+      const errorMessage = { 
+        role: 'assistant' as const, 
+        content: "I apologize, but I encountered an error while generating financial advice. Please try again later."
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
+      
+      toast({
+        title: "Error",
+        description: "Failed to generate financial advice",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
