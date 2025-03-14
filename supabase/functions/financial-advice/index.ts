@@ -1,7 +1,10 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.21.0";
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,7 +18,7 @@ serve(async (req) => {
   }
 
   try {
-    const { query } = await req.json();
+    const { query, userId } = await req.json();
 
     if (!query) {
       return new Response(
@@ -28,10 +31,68 @@ serve(async (req) => {
     }
 
     console.log("Received query:", query);
+    console.log("User ID:", userId);
+
+    // Initialize the Supabase client with the service role key to bypass RLS
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Fetch user's financial data if userId is provided
+    let userFinancialContext = "";
+    if (userId) {
+      // Fetch transactions
+      const { data: transactions, error: transactionsError } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', userId)
+        .order('date', { ascending: false })
+        .limit(50);
+
+      if (transactionsError) {
+        console.error("Error fetching transactions:", transactionsError);
+      }
+
+      // Fetch accounts
+      const { data: accounts, error: accountsError } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('user_id', userId);
+
+      if (accountsError) {
+        console.error("Error fetching accounts:", accountsError);
+      }
+
+      // Fetch budgets
+      const { data: budgets, error: budgetsError } = await supabase
+        .from('budgets')
+        .select('*')
+        .eq('user_id', userId);
+
+      if (budgetsError) {
+        console.error("Error fetching budgets:", budgetsError);
+      }
+
+      // Format the financial data as a string
+      if (transactions?.length || accounts?.length || budgets?.length) {
+        userFinancialContext = `
+Here is this user's financial data:
+
+${accounts?.length ? `\nACCOUNTS:
+${accounts.map(account => `- ${account.name} (${account.type}): ₹${account.balance}`).join('\n')}` : ''}
+
+${transactions?.length ? `\nRECENT TRANSACTIONS:
+${transactions.map(tx => `- ${tx.date.substring(0, 10)}: ${tx.name} - ${tx.type === 'expense' ? '-' : '+'}₹${tx.amount} (${tx.category})`).join('\n')}` : ''}
+
+${budgets?.length ? `\nBUDGETS:
+${budgets.map(budget => `- ${budget.category}: ₹${budget.spent} spent of ₹${budget.total} (${Math.round((budget.spent / budget.total) * 100)}% used)`).join('\n')}` : ''}
+
+Based on the above financial information, please provide personalized advice.
+`;
+      }
+    }
 
     // Create system prompt for financial advice context
     const systemPrompt = `You are a professional financial advisor. 
-    Your goal is to provide accurate, personalized financial advice based on the user's query.
+    Your goal is to provide accurate, personalized financial advice based on the user's query and financial data.
     Focus on actionable insights and practical recommendations related to:
     - Budgeting strategies
     - Investment planning
@@ -41,7 +102,8 @@ serve(async (req) => {
     - Tax optimization
     - Financial goal setting
     
-    Keep your responses informative, concise, and tailored to the specific financial topic.`;
+    Keep your responses informative, concise, and tailored to the specific financial topic.
+    ${userFinancialContext}`;
 
     // Prepare the request to the Gemini API
     const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent", {
@@ -104,7 +166,7 @@ serve(async (req) => {
       advisorResponse = "I apologize, but I'm unable to provide financial advice at the moment. Please try again later.";
     }
 
-    console.log("Generated financial advice successfully");
+    console.log("Generated personalized financial advice successfully");
 
     return new Response(
       JSON.stringify({ response: advisorResponse }),

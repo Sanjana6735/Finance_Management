@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Bot, Sparkles, User } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/components/AuthProvider";
 
 interface Message {
   role: 'user' | 'assistant';
@@ -15,6 +16,7 @@ interface Message {
 
 const FinancialAdvisor = () => {
   const { toast } = useToast();
+  const { userId } = useAuth();
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -36,7 +38,10 @@ const FinancialAdvisor = () => {
     try {
       // Call the Supabase edge function to get financial advice
       const { data, error } = await supabase.functions.invoke('financial-advice', {
-        body: { query: input }
+        body: { 
+          query: input,
+          userId: userId // Pass the userId to the edge function
+        }
       });
 
       if (error) {
@@ -174,35 +179,35 @@ const FinancialAdvisor = () => {
                 <Button 
                   variant="outline" 
                   className="w-full justify-start" 
-                  onClick={() => setInput("How should I budget my monthly income?")}
+                  onClick={() => setInput("Based on my transaction history, how should I budget my monthly income?")}
                 >
                   Budget planning
                 </Button>
                 <Button 
                   variant="outline" 
                   className="w-full justify-start" 
-                  onClick={() => setInput("What investment strategies would you recommend for me?")}
+                  onClick={() => setInput("Looking at my accounts, what investment strategies would you recommend for me?")}
                 >
                   Investment advice
                 </Button>
                 <Button 
                   variant="outline" 
                   className="w-full justify-start" 
-                  onClick={() => setInput("How can I pay off my debts faster?")}
+                  onClick={() => setInput("Based on my spending patterns, how can I reduce my monthly expenses?")}
                 >
-                  Debt management
+                  Expense optimization
                 </Button>
                 <Button 
                   variant="outline" 
                   className="w-full justify-start" 
-                  onClick={() => setInput("How much should I be saving each month?")}
+                  onClick={() => setInput("Analyze my current financial situation and suggest ways to improve my savings.")}
                 >
                   Savings goals
                 </Button>
                 <Button 
                   variant="outline" 
                   className="w-full justify-start" 
-                  onClick={() => setInput("What tax strategies should I consider?")}
+                  onClick={() => setInput("What tax strategies should I consider based on my income and expenses?")}
                 >
                   Tax optimization
                 </Button>
