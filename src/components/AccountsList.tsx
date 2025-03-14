@@ -136,7 +136,13 @@ const AccountsList = ({ className }: AccountsListProps) => {
             <Button 
               variant="outline" 
               className="mt-4 gap-1"
-              onClick={() => document.querySelector('[aria-label="Add Account"]')?.click()}
+              onClick={() => {
+                // Find the add account button by its aria-label and trigger it
+                const addAccountButton = document.querySelector('[aria-label="Add Account"]');
+                if (addAccountButton instanceof HTMLElement) {
+                  addAccountButton.click();
+                }
+              }}
             >
               <PlusCircle size={16} />
               <span>Add Your First Account</span>

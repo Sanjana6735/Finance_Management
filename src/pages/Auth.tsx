@@ -17,6 +17,7 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [activeTab, setActiveTab] = useState("login");
+  const [signupSuccess, setSignupSuccess] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -53,24 +54,49 @@ const Auth = () => {
     e.preventDefault();
     setLoading(true);
 
+    if (password.length < 6) {
+      toast({
+        title: "Password too short",
+        description: "Password must be at least 6 characters long",
+        variant: "destructive",
+      });
+      setLoading(false);
+      return;
+    }
+
     try {
-      const { error } = await supabase.auth.signUp({
+      // Directly sign up with email and password
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
             username,
           },
+          // Explicitly set emailRedirectTo to ensure correct redirect after email verification
+          emailRedirectTo: `${window.location.origin}/dashboard`,
         },
       });
 
       if (error) throw error;
       
-      toast({
-        title: "Registration successful",
-        description: "Please check your email to confirm your account.",
-      });
+      if (data.user && data.user.identities && data.user.identities.length === 0) {
+        // User already exists
+        toast({
+          title: "Account already exists",
+          description: "Please login with your existing account",
+          variant: "destructive",
+        });
+        setActiveTab("login");
+      } else {
+        setSignupSuccess(true);
+        toast({
+          title: "Registration successful",
+          description: "Please check your email to confirm your account.",
+        });
+      }
     } catch (error: any) {
+      console.error("Signup error:", error);
       toast({
         title: "Registration failed",
         description: error.message || "Please check the information provided and try again",
@@ -181,6 +207,25 @@ const Auth = () => {
             </form>
           </TabsContent>
           <TabsContent value="signup">
+            {signupSuccess ? (
+              <div className="text-center py-6 px-4">
+                <h3 className="font-medium text-lg mb-2">Registration Successful!</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Please check your email to confirm your account.
+                </p>
+                <Button 
+                  type="button"
+                  variant="outline"
+                  className="mt-2"
+                  onClick={() => {
+                    setActiveTab("login");
+                    setSignupSuccess(false);
+                  }}
+                >
+                  Back to Login
+                </Button>
+              </div>
+            ) : (
             <form onSubmit={handleSignUp}>
               <CardContent className="space-y-4 pt-6">
                 <div className="space-y-2">
@@ -214,6 +259,9 @@ const Auth = () => {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Password must be at least 6 characters long
+                  </p>
                 </div>
               </CardContent>
               <CardFooter>
@@ -229,6 +277,7 @@ const Auth = () => {
                 </Button>
               </CardFooter>
             </form>
+            )}
           </TabsContent>
           <TabsContent value="forgot">
             <form onSubmit={handleForgotPassword}>
