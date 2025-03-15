@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/components/AuthProvider";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 const Settings = () => {
   const { user, userId } = useAuth();
@@ -21,6 +22,7 @@ const Settings = () => {
     email: "",
     avatarUrl: "",
     currency: "INR",
+    reportFrequency: "monthly", // Default to monthly reports
   });
   const [notifications, setNotifications] = useState({
     emailAlerts: true,
@@ -52,6 +54,7 @@ const Settings = () => {
             email: user?.email || "",
             avatarUrl: data.avatar_url || user?.user_metadata?.avatar_url || "",
             currency: data.currency || "INR",
+            reportFrequency: data.report_frequency || "monthly",
           });
         } else {
           // If no profile exists, use auth user data
@@ -60,6 +63,7 @@ const Settings = () => {
             email: user?.email || "",
             avatarUrl: user?.user_metadata?.avatar_url || "",
             currency: "INR",
+            reportFrequency: "monthly",
           });
         }
       } catch (err) {
@@ -91,6 +95,7 @@ const Settings = () => {
           username: profileData.username,
           avatar_url: profileData.avatarUrl,
           currency: profileData.currency,
+          report_frequency: profileData.reportFrequency,
         });
         
       if (error) throw error;
@@ -233,6 +238,39 @@ const Settings = () => {
                       <SelectItem value="GBP">British Pound (£)</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="reportFrequency">Financial Report Frequency</Label>
+                  <RadioGroup 
+                    value={profileData.reportFrequency} 
+                    onValueChange={(value) => setProfileData({...profileData, reportFrequency: value})}
+                    className="mt-2"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="weekly" id="weekly" />
+                      <Label htmlFor="weekly" className="cursor-pointer">Weekly</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="monthly" id="monthly" />
+                      <Label htmlFor="monthly" className="cursor-pointer">Monthly</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="quarterly" id="quarterly" />
+                      <Label htmlFor="quarterly" className="cursor-pointer">Quarterly</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="half-yearly" id="half-yearly" />
+                      <Label htmlFor="half-yearly" className="cursor-pointer">Half-Yearly</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="yearly" id="yearly" />
+                      <Label htmlFor="yearly" className="cursor-pointer">Yearly</Label>
+                    </div>
+                  </RadioGroup>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    You will receive financial reports based on your selected frequency
+                  </p>
                 </div>
                 
                 <Button onClick={handleSaveProfile} disabled={isLoading}>
