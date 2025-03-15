@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.21.0";
 
@@ -10,6 +9,33 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// Function to clean markdown formatting from text
+function cleanMarkdownFormatting(text: string): string {
+  if (!text) return text;
+  
+  // Remove bold/italic markers
+  let cleaned = text.replace(/\*\*/g, "");
+  cleaned = cleaned.replace(/\*/g, "");
+  
+  // Remove markdown headings (# Heading)
+  cleaned = cleaned.replace(/^#+\s+/gm, "");
+  
+  // Remove markdown links and keep only the text [text](url) -> text
+  cleaned = cleaned.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+  
+  // Remove code blocks
+  cleaned = cleaned.replace(/```[a-z]*\n[\s\S]*?\n```/g, "");
+  cleaned = cleaned.replace(/`([^`]+)`/g, "$1");
+  
+  // Remove bullet points
+  cleaned = cleaned.replace(/^\s*[-*+]\s+/gm, "• ");
+  
+  // Replace multiple newlines with a maximum of two
+  cleaned = cleaned.replace(/\n{3,}/g, "\n\n");
+  
+  return cleaned;
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -102,6 +128,10 @@ Based on the above financial information, please provide personalized advice.
     - Tax optimization
     - Financial goal setting
     
+    IMPORTANT: Do not use any markdown formatting in your response - no asterisks, no bullet points with dashes, no hashtags for headings.
+    Format lists with bullet points using the "•" symbol instead of dashes or asterisks.
+    Use clear paragraph breaks instead of markdown formatting.
+    
     Keep your responses informative, concise, and tailored to the specific financial topic.
     ${userFinancialContext}`;
 
@@ -160,7 +190,8 @@ Based on the above financial information, please provide personalized advice.
     // Extract the response text from the Gemini API response
     let advisorResponse = "";
     if (data.candidates && data.candidates[0]?.content?.parts) {
-      advisorResponse = data.candidates[0].content.parts[0].text;
+      // Clean any markdown formatting from the response
+      advisorResponse = cleanMarkdownFormatting(data.candidates[0].content.parts[0].text);
     } else {
       console.error("Unexpected Gemini API response format:", data);
       advisorResponse = "I apologize, but I'm unable to provide financial advice at the moment. Please try again later.";

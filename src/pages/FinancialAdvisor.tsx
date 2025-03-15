@@ -82,6 +82,52 @@ const FinancialAdvisor = () => {
     }
   };
 
+  // Helper function to format message content with paragraphs and bullet points
+  const formatMessageContent = (content: string) => {
+    if (!content) return '';
+
+    // Split the text by newlines to handle paragraphs
+    const paragraphs = content.split('\n\n');
+    
+    return paragraphs.map((paragraph, index) => {
+      // If paragraph starts with a bullet point (•), format as a list item
+      if (paragraph.trim().startsWith('•')) {
+        return (
+          <ul key={index} className="list-disc pl-6 space-y-1 my-2">
+            {paragraph.split('\n').map((line, lineIndex) => (
+              <li key={`${index}-${lineIndex}`} className="text-sm">
+                {line.trim().startsWith('•') ? line.trim().substring(1).trim() : line.trim()}
+              </li>
+            ))}
+          </ul>
+        );
+      }
+      
+      // Handle lines with bullet points within a paragraph
+      if (paragraph.includes('\n• ')) {
+        const lines = paragraph.split('\n');
+        const firstLine = lines[0];
+        const bulletPoints = lines.slice(1).filter(line => line.trim().startsWith('•'));
+        
+        return (
+          <div key={index} className="mb-2">
+            <p className="text-sm mb-1">{firstLine}</p>
+            <ul className="list-disc pl-6 space-y-1">
+              {bulletPoints.map((point, pointIndex) => (
+                <li key={`${index}-bullet-${pointIndex}`} className="text-sm">
+                  {point.trim().startsWith('•') ? point.trim().substring(1).trim() : point.trim()}
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      }
+      
+      // Regular paragraph
+      return <p key={index} className="text-sm mb-2">{paragraph}</p>;
+    });
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -123,7 +169,9 @@ const FinancialAdvisor = () => {
                             {message.role === 'user' ? 'You' : 'Wealth AI'}
                           </span>
                         </div>
-                        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                        <div className="text-sm">
+                          {formatMessageContent(message.content)}
+                        </div>
                       </div>
                     </div>
                   ))}
