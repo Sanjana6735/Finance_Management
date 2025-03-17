@@ -284,6 +284,21 @@ async function generateAndSendReport(
     throw new Error(`Failed to send email: ${errorText}`);
   }
   
+  // Log report send in report_history table
+  const { error: historyError } = await supabase
+    .from('report_history')
+    .insert({
+      user_id: userId,
+      frequency,
+      report_type: reportType,
+      email_sent_to: email
+    });
+    
+  if (historyError) {
+    console.error("Error logging report history:", historyError);
+    // Don't throw here, just log the error
+  }
+  
   return await emailResponse.json();
 }
 

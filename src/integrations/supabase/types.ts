@@ -186,6 +186,57 @@ export type Database = {
         }
         Relationships: []
       }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          currency: string | null
+          id: string
+          report_frequency: string | null
+          username: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          currency?: string | null
+          id: string
+          report_frequency?: string | null
+          username?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          currency?: string | null
+          id?: string
+          report_frequency?: string | null
+          username?: string | null
+        }
+        Relationships: []
+      }
+      report_history: {
+        Row: {
+          email_sent_to: string
+          frequency: string
+          id: string
+          report_type: string
+          sent_at: string
+          user_id: string
+        }
+        Insert: {
+          email_sent_to: string
+          frequency: string
+          id?: string
+          report_type: string
+          sent_at?: string
+          user_id: string
+        }
+        Update: {
+          email_sent_to?: string
+          frequency?: string
+          id?: string
+          report_type?: string
+          sent_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       transactions: {
         Row: {
           amount: number
