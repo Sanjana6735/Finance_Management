@@ -67,15 +67,18 @@ serve(async (req) => {
     }
 
     // Insert notification into the notifications table
+    const notificationTitle = percentage_used >= 100 ? "Budget Exceeded" : "Budget Alert";
+    const notificationMessage = percentage_used >= 100 
+      ? `You've exceeded your ${category} budget.` 
+      : `You've used ${percentage_used.toFixed(0)}% of your ${category} budget.`;
+    
     const { data: notificationData, error: notificationError } = await supabase
       .from("notifications")
       .insert([
         {
           user_id: user_id,
-          title: percentage_used >= 100 ? "Budget Exceeded" : "Budget Alert",
-          message: percentage_used >= 100 
-            ? `You've exceeded your ${category} budget.` 
-            : `You've used ${percentage_used.toFixed(0)}% of your ${category} budget.`,
+          title: notificationTitle,
+          message: notificationMessage,
           type: "budget",
           read: false
         }

@@ -138,7 +138,7 @@ const Profile = () => {
           full_name: userData.fullName,
           avatar_url: userData.avatarUrl,
           updated_at: new Date().toISOString()
-        });
+        }, { onConflict: 'id' });
 
       if (upsertError) {
         console.error("Error upserting profile:", upsertError);
@@ -170,26 +170,34 @@ const Profile = () => {
 
     const file = e.target.files[0];
     const fileExt = file.name.split('.').pop();
-    const fileName = `avatar-${userId}.${fileExt}`;
+    const fileName = `avatar-${userId}-${Math.random().toString(36).substring(2)}.${fileExt}`;
     const filePath = `avatars/${fileName}`;
 
     try {
       setSaving(true);
       console.log("Uploading avatar for user ID:", userId);
 
-      // Create storage bucket if it doesn't exist
-      try {
-        const { data: buckets } = await supabase.storage.listBuckets();
-        const avatarBucket = buckets?.find(b => b.name === 'avatars');
+      // Check if storage bucket exists
+      const { data: buckets, error: bucketListError } = await supabase.storage.listBuckets();
+      
+      if (bucketListError) {
+        console.error("Error listing buckets:", bucketListError);
+        throw bucketListError;
+      }
+      
+      const avatarBucket = buckets?.find(b => b.name === 'avatars');
+      
+      // Create bucket if it doesn't exist
+      if (!avatarBucket) {
+        console.log("Creating avatars bucket");
+        const { error: createBucketError } = await supabase.storage.createBucket('avatars', {
+          public: true
+        });
         
-        if (!avatarBucket) {
-          console.log("Creating avatars bucket");
-          await supabase.storage.createBucket('avatars', {
-            public: true
-          });
+        if (createBucketError) {
+          console.error("Error creating bucket:", createBucketError);
+          throw createBucketError;
         }
-      } catch (bucketError) {
-        console.error("Error checking/creating bucket:", bucketError);
       }
 
       // Upload file
@@ -211,11 +219,15 @@ const Profile = () => {
         .from('avatars')
         .getPublicUrl(filePath);
 
+      if (!urlData || !urlData.publicUrl) {
+        throw new Error("Failed to get public URL for uploaded avatar");
+      }
+
       // Update avatar URL in state and database
-      const avatarUrl = urlData?.publicUrl;
+      const avatarUrl = urlData.publicUrl;
       console.log("Avatar uploaded, public URL:", avatarUrl);
       
-      setUserData({ ...userData, avatarUrl });
+      setUserData(prevData => ({ ...prevData, avatarUrl }));
 
       // First update user metadata
       const { error: authUpdateError } = await supabase.auth.updateUser({
@@ -234,7 +246,7 @@ const Profile = () => {
           id: userId,
           avatar_url: avatarUrl,
           updated_at: new Date().toISOString()
-        });
+        }, { onConflict: 'id' });
 
       if (updateError) {
         console.error("Error updating profile with avatar:", updateError);

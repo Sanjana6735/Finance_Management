@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
 // Import the Supabase URL and key from the client configuration
-import { SUPABASE_URL } from "@/integrations/supabase/client";
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 
 const Auth = () => {
   const [email, setEmail] = useState("");
@@ -67,31 +67,23 @@ const Auth = () => {
     }
 
     try {
-      // Call our custom edge function for signup using the imported URL constant
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/auth-emails`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY || supabase.supabaseUrl.split('//')[1].split('.')[0]}`,
+      // Direct signup using Supabase auth API instead of custom edge function
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username: username,
+          },
+          emailRedirectTo: `${window.location.origin}/dashboard`,
         },
-        body: JSON.stringify({
-          type: 'signup',
-          email,
-          password,
-          redirect_url: `${window.location.origin}/dashboard`,
-        }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Registration failed");
-      }
-
-      const result = await response.json();
+      if (error) throw error;
       
       toast({
         title: "Registration successful",
-        description: "Your account has been created. You can now log in.",
+        description: "Your account has been created. Please check your email to verify your account.",
       });
       
       setSignupSuccess(true);
@@ -124,24 +116,12 @@ const Auth = () => {
     }
     
     try {
-      // Call our custom edge function for password reset using the imported URL constant
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/auth-emails`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY || supabase.supabaseUrl.split('//')[1].split('.')[0]}`,
-        },
-        body: JSON.stringify({
-          type: 'reset',
-          email,
-          redirect_url: `${window.location.origin}/reset-password`,
-        }),
+      // Direct password reset using Supabase auth API
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Password reset failed");
-      }
+      if (error) throw error;
       
       setResetEmailSent(true);
       toast({
