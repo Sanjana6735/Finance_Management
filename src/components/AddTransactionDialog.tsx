@@ -142,9 +142,19 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
           const { storeName, date: receiptDate, totalAmount, items } = result.data;
           
           // Update form with extracted data
-          setName(storeName || "Receipt Purchase");
-          setAmount(String(totalAmount) || "");
-          setCategory(getCategoryFromStoreName(storeName) || "shopping");
+          if (storeName && storeName !== "Unknown Store") {
+            setName(storeName);
+          } else {
+            setName("Receipt Purchase");
+          }
+          
+          if (totalAmount && !isNaN(parseFloat(totalAmount))) {
+            setAmount(String(totalAmount));
+          }
+          
+          if (storeName) {
+            setCategory(getCategoryFromStoreName(storeName) || "shopping");
+          }
           
           // Parse date if available
           if (receiptDate) {
