@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -67,23 +68,30 @@ const Auth = () => {
     }
 
     try {
-      // Direct signup using Supabase auth API instead of custom edge function
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            username: username,
-          },
-          emailRedirectTo: `${window.location.origin}/dashboard`,
+      // Use edge function to handle user creation and email sending
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/auth-emails`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_PUBLISHABLE_KEY}`
         },
+        body: JSON.stringify({
+          type: 'signup',
+          email,
+          password,
+          redirect_url: `${window.location.origin}/dashboard`
+        })
       });
 
-      if (error) throw error;
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || "Registration failed");
+      }
       
       toast({
         title: "Registration successful",
-        description: "Your account has been created. Please check your email to verify your account.",
+        description: "Your account has been created. You can now log in.",
       });
       
       setSignupSuccess(true);
@@ -116,12 +124,25 @@ const Auth = () => {
     }
     
     try {
-      // Direct password reset using Supabase auth API
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+      // Use edge function to handle password reset
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/auth-emails`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_PUBLISHABLE_KEY}`
+        },
+        body: JSON.stringify({
+          type: 'reset',
+          email,
+          redirect_url: `${window.location.origin}/reset-password`
+        })
       });
 
-      if (error) throw error;
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || "Password reset failed");
+      }
       
       setResetEmailSent(true);
       toast({

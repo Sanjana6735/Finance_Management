@@ -47,6 +47,42 @@ serve(async (req) => {
 
     console.log(`Processing budget alert for ${category}, ${percentage_used.toFixed(0)}% used`);
 
+    // Check if we've already sent a similar notification recently
+    const sixHoursAgo = new Date();
+    sixHoursAgo.setHours(sixHoursAgo.getHours() - 6);
+    
+    const { data: recentLogs, error: logCheckError } = await supabase
+      .from("budget_alert_logs")
+      .select("*")
+      .eq("budget_id", budget_id)
+      .eq("user_id", user_id)
+      .gt("created_at", sixHoursAgo.toISOString())
+      .order("created_at", { ascending: false });
+      
+    if (logCheckError) {
+      console.error("Error checking recent alerts:", logCheckError);
+    } else if (recentLogs && recentLogs.length > 0) {
+      console.log(`Found ${recentLogs.length} recent alerts for this budget, checking if we should send another...`);
+      
+      // Only send another alert if the percentage has increased significantly (10% more)
+      const mostRecentAlert = recentLogs[0];
+      if (percentage_used < mostRecentAlert.percentage_used + 10) {
+        console.log(`Skipping alert: Recent alert was ${mostRecentAlert.percentage_used}%, current is ${percentage_used}%`);
+        return new Response(
+          JSON.stringify({
+            message: "Skipped sending duplicate alert",
+            reason: "Recent similar alert already sent"
+          }),
+          {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 200,
+          }
+        );
+      } else {
+        console.log(`Sending new alert: Significant increase from ${mostRecentAlert.percentage_used}% to ${percentage_used}%`);
+      }
+    }
+
     // Log the alert in the budget_alert_logs table
     const { data: logData, error: logError } = await supabase
       .from("budget_alert_logs")

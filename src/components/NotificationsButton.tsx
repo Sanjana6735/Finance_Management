@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/components/AuthProvider";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useToast } from "@/hooks/use-toast";
 
 interface Notification {
   id: string;
@@ -27,6 +28,7 @@ const NotificationsButton = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
+  const { toast } = useToast();
 
   // Fetch notifications
   useEffect(() => {
@@ -44,11 +46,17 @@ const NotificationsButton = () => {
         if (error) throw error;
         
         if (data) {
+          console.log("Fetched notifications:", data);
           setNotifications(data as Notification[]);
           setUnreadCount(data.filter(n => !n.read).length);
         }
       } catch (err) {
         console.error("Error fetching notifications:", err);
+        toast({
+          title: "Error",
+          description: "Failed to load notifications",
+          variant: "destructive",
+        });
       }
     };
     
@@ -68,6 +76,12 @@ const NotificationsButton = () => {
           console.log("New notification received:", payload);
           setNotifications(prev => [payload.new as Notification, ...prev]);
           setUnreadCount(prevCount => prevCount + 1);
+          
+          // Show a toast for new notifications
+          toast({
+            title: payload.new.title,
+            description: payload.new.message,
+          });
         }
       )
       .subscribe();
@@ -75,7 +89,7 @@ const NotificationsButton = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userId]);
+  }, [userId, toast]);
   
   // Mark notifications as read when opening the popover
   const handleOpenChange = async (open: boolean) => {
@@ -104,6 +118,11 @@ const NotificationsButton = () => {
         setUnreadCount(0);
       } catch (err) {
         console.error("Error marking notifications as read:", err);
+        toast({
+          title: "Error",
+          description: "Failed to mark notifications as read",
+          variant: "destructive",
+        });
       }
     }
   };

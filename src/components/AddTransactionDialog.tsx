@@ -8,11 +8,12 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
-import { CalendarIcon, Camera, Plus, Loader2 } from "lucide-react";
+import { CalendarIcon, Camera, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./AuthProvider";
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 
 interface AddTransactionDialogProps {
   open: boolean;
@@ -98,27 +99,118 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setReceipt(file);
       
-      // Simulate receipt scanning with AI
+      // Start receipt scanning with AI
       setIsScanning(true);
-      setTimeout(() => {
-        setIsScanning(false);
+      toast({
+        title: "Scanning receipt",
+        description: "Please wait while we analyze your receipt...",
+      });
+      
+      try {
+        // Convert file to base64
+        const base64 = await fileToBase64(file);
         
-        // Simulate AI extracting data from receipt
-        setName("AI Detected Purchase");
-        setAmount("399.99");
-        setCategory("shopping");
-        
-        toast({
-          title: "Receipt scanned",
-          description: "We've extracted the data from your receipt. Please review and edit if needed.",
+        // Call the receipt scanner function
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/receipt-scanner`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPABASE_PUBLISHABLE_KEY}`
+          },
+          body: JSON.stringify({
+            imageBase64: base64.split(',')[1]  // Remove data URL prefix
+          }),
         });
-      }, 2000);
+        
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+          // Extract data from the response
+          const { storeName, date: receiptDate, totalAmount, items } = result.data;
+          
+          // Update form with extracted data
+          setName(storeName || "Receipt Purchase");
+          setAmount(String(totalAmount) || "");
+          setCategory(getCategoryFromStoreName(storeName) || "shopping");
+          
+          // Parse date if available
+          if (receiptDate) {
+            try {
+              const parsedDate = new Date(receiptDate);
+              if (!isNaN(parsedDate.getTime())) {
+                setDate(parsedDate);
+              }
+            } catch (e) {
+              console.warn("Couldn't parse receipt date:", e);
+            }
+          }
+          
+          toast({
+            title: "Receipt scanned",
+            description: "We've extracted the data from your receipt. Please review and edit if needed.",
+          });
+        } else {
+          toast({
+            title: "Receipt scanning issue",
+            description: "We couldn't fully analyze your receipt. Please enter the details manually.",
+            variant: "destructive"
+          });
+        }
+      } catch (error) {
+        console.error("Receipt scanning error:", error);
+        toast({
+          title: "Scanning failed",
+          description: "Failed to scan receipt. Please enter the details manually.",
+          variant: "destructive"
+        });
+      } finally {
+        setIsScanning(false);
+      }
     }
+  };
+
+  // Convert file to base64
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  // Helper function to guess category from store name
+  const getCategoryFromStoreName = (storeName: string): string => {
+    if (!storeName) return "shopping";
+    
+    const name = storeName.toLowerCase();
+    
+    if (name.includes("restaurant") || name.includes("cafe") || name.includes("food") || 
+        name.includes("grocery") || name.includes("supermarket") || name.includes("market")) {
+      return "food";
+    }
+    
+    if (name.includes("pharmacy") || name.includes("medical") || name.includes("doctor") || 
+        name.includes("hospital") || name.includes("health")) {
+      return "healthcare";
+    }
+    
+    if (name.includes("uber") || name.includes("lyft") || name.includes("taxi") || 
+        name.includes("train") || name.includes("metro") || name.includes("transit")) {
+      return "transport";
+    }
+    
+    if (name.includes("movie") || name.includes("cinema") || name.includes("theater") || 
+        name.includes("entertainment") || name.includes("game")) {
+      return "entertainment";
+    }
+    
+    return "shopping";
   };
 
   return (

@@ -49,7 +49,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are an expert receipt analyzer. Extract the following information from the receipt image: store name, date, total amount, and items purchased with their individual prices. Format the response as a JSON object with these fields."
+            content: "You are an expert receipt analyzer. Extract the following information from the receipt image: store name, date, total amount, and items purchased with their individual prices. Format the response as a JSON object with these fields. Be as accurate as possible with the amounts and dates."
           },
           {
             role: "user",
@@ -68,6 +68,7 @@ serve(async (req) => {
           },
         ],
         response_format: { type: "json_object" },
+        temperature: 0.2, // Lower temperature for more consistent results
       };
     } else {
       // Process text with GPT model
@@ -76,7 +77,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are an expert receipt analyzer. Extract the following information from the receipt text: store name, date, total amount, and items purchased with their individual prices. Format the response as a JSON object with these fields."
+            content: "You are an expert receipt analyzer. Extract the following information from the receipt text: store name, date, total amount, and items purchased with their individual prices. Format the response as a JSON object with these fields. Be as accurate as possible with the amounts and dates."
           },
           {
             role: "user",
@@ -84,10 +85,11 @@ serve(async (req) => {
           },
         ],
         response_format: { type: "json_object" },
+        temperature: 0.2, // Lower temperature for more consistent results
       };
     }
 
-    console.log("Sending request to OpenAI");
+    console.log("Sending request to OpenAI with data:", imageBase64 ? "Image provided" : text);
     
     // Call OpenAI API to analyze the receipt
     const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -114,6 +116,11 @@ serve(async (req) => {
       
       // Log the extracted data and return it
       console.log("Extracted data:", extractedData);
+      
+      // Check if the extracted data is valid
+      if (!extractedData.storeName || !extractedData.totalAmount) {
+        console.warn("Incomplete data extracted, returning with warning");
+      }
       
       return new Response(
         JSON.stringify({

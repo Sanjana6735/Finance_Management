@@ -1,393 +1,399 @@
 
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { User, UserMetadata } from "@supabase/supabase-js";
+import { Pencil, Loader2, Save, Upload } from "lucide-react";
 import Navbar from "@/components/Navbar";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/components/AuthProvider";
-import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Camera } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/components/AuthProvider";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { supabase } from "@/integrations/supabase/client";
+
+type ProfileData = {
+  username: string;
+  avatar_url: string | null;
+  currency: string;
+  report_frequency: "daily" | "weekly" | "monthly";
+};
 
 const Profile = () => {
-  const { user, userId } = useAuth();
-  const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [userData, setUserData] = useState({
+  const { user, isAuthenticated } = useAuth();
+  const [profile, setProfile] = useState<ProfileData>({
     username: "",
-    fullName: "",
-    email: "",
-    avatarUrl: ""
+    avatar_url: null,
+    currency: "INR",
+    report_frequency: "monthly"
   });
+  const [loading, setLoading] = useState(false);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const { toast } = useToast();
+  const navigate = useNavigate();
 
-  // Fetch user profile data
   useEffect(() => {
+    if (!isAuthenticated) {
+      navigate("/auth");
+      return;
+    }
+
     const fetchProfile = async () => {
-      if (!userId) return;
-      
       setLoading(true);
       try {
-        console.log("Fetching profile for user ID:", userId);
-        
-        // Get user metadata from auth
-        const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
-        
-        if (authError) throw authError;
-        
-        console.log("Auth user data:", authUser);
-        
-        // First try to get from profiles table
-        let { data: profiles, error } = await supabase
+        if (!user) return;
+
+        // First check if a profile exists
+        const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .select('*')
-          .eq('id', userId)
-          .limit(1);
-        
-        if (error) {
-          console.error("Error fetching profile:", error);
-          // Create the profiles table if it doesn't exist
-          try {
-            await supabase
-              .from('profiles')
-              .upsert({
-                id: userId,
-                username: authUser?.user_metadata?.username || authUser?.email?.split('@')[0] || "",
-                full_name: authUser?.user_metadata?.full_name || "",
-                avatar_url: authUser?.user_metadata?.avatar_url || "",
-                updated_at: new Date().toISOString()
-              });
-              
-            // Fetch the profile again
-            const { data: retryProfiles, error: retryError } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', userId)
-              .limit(1);
-              
-            if (retryError) {
-              console.error("Error fetching profile after creation:", retryError);
-              profiles = null;
-            } else {
-              profiles = retryProfiles;
-              console.log("Profile created and fetched:", profiles);
-            }
-          } catch (err) {
-            console.error("Error creating profile:", err);
-            profiles = null;
-          }
+          .eq('id', user.id)
+          .single();
+          
+        if (profileError && profileError.code !== 'PGRST116') {
+          throw profileError;
         }
 
-        // Set data from profile or user auth data
-        setUserData({
-          username: profiles?.[0]?.username || authUser?.user_metadata?.username || authUser?.email?.split('@')[0] || "",
-          fullName: profiles?.[0]?.full_name || authUser?.user_metadata?.full_name || "",
-          email: authUser?.email || "",
-          avatarUrl: profiles?.[0]?.avatar_url || authUser?.user_metadata?.avatar_url || ""
+        console.log("Profile data from DB:", profileData);
+
+        // Get the user metadata
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        
+        if (userError) throw userError;
+        
+        console.log("User data from Auth:", userData);
+
+        // Merge data from auth and profiles table
+        setProfile({
+          username: profileData?.username || userData.user?.user_metadata?.username || user.email?.split('@')[0] || "",
+          avatar_url: profileData?.avatar_url || userData.user?.user_metadata?.avatar_url || null,
+          currency: profileData?.currency || "INR",
+          report_frequency: profileData?.report_frequency || "monthly",
         });
         
-        console.log("User data set:", userData);
-      } catch (err) {
-        console.error("Error fetching user data:", err);
+      } catch (error) {
+        console.error("Error fetching user profile:", error);
         toast({
           title: "Error",
-          description: "Failed to load user profile data",
-          variant: "destructive"
+          description: "Failed to load profile data",
+          variant: "destructive",
         });
       } finally {
         setLoading(false);
       }
     };
 
-    if (userId) {
-      fetchProfile();
-    }
-  }, [userId, toast]);
+    fetchProfile();
+  }, [user, isAuthenticated, navigate, toast]);
 
-  const handleUpdateProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userId) return;
-
-    setSaving(true);
+  const handleSave = async () => {
+    setLoading(true);
     try {
-      console.log("Updating profile for user ID:", userId);
-      console.log("Profile data to update:", userData);
+      if (!user) return;
       
-      // First update user metadata
-      const { error: updateError } = await supabase.auth.updateUser({
+      // First update auth metadata
+      const { error: metadataError } = await supabase.auth.updateUser({
         data: {
-          username: userData.username,
-          full_name: userData.fullName,
-          avatar_url: userData.avatarUrl
+          username: profile.username,
+          avatar_url: profile.avatar_url,
         }
       });
       
-      if (updateError) {
-        console.error("Error updating user metadata:", updateError);
-        throw updateError;
-      }
+      if (metadataError) throw metadataError;
       
-      // Then update profiles table
+      // Then update or insert profile data
       const { error: upsertError } = await supabase
         .from('profiles')
         .upsert({
-          id: userId,
-          username: userData.username,
-          full_name: userData.fullName,
-          avatar_url: userData.avatarUrl,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
-
-      if (upsertError) {
-        console.error("Error upserting profile:", upsertError);
-        throw upsertError;
-      }
-
-      console.log("Profile updated successfully");
+          id: user.id,
+          username: profile.username,
+          avatar_url: profile.avatar_url,
+          currency: profile.currency,
+          report_frequency: profile.report_frequency
+        });
+      
+      if (upsertError) throw upsertError;
       
       toast({
         title: "Profile updated",
-        description: "Your profile information has been saved successfully.",
+        description: "Your profile has been successfully updated",
       });
-    } catch (err) {
-      console.error("Error updating profile:", err);
+      setIsEditing(false);
+    } catch (error: any) {
+      console.error("Error updating profile:", error);
       toast({
-        title: "Error",
-        description: "Failed to update profile. Please try again.",
-        variant: "destructive"
+        title: "Update failed",
+        description: error.message || "Failed to update profile",
+        variant: "destructive",
       });
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
-  // Handle file upload for avatar
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || !e.target.files[0]) return;
-    if (!userId) return;
-
-    const file = e.target.files[0];
-    const fileExt = file.name.split('.').pop();
-    const fileName = `avatar-${userId}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-    const filePath = `avatars/${fileName}`;
-
+  const handleAvatarUpload = async () => {
+    if (!avatarFile || !user) return;
+    
+    setUploadingAvatar(true);
     try {
-      setSaving(true);
-      console.log("Uploading avatar for user ID:", userId);
-
-      // Check if storage bucket exists
-      const { data: buckets, error: bucketListError } = await supabase.storage.listBuckets();
+      // Check if storage bucket exists, if not create it
+      const { data: buckets } = await supabase.storage.listBuckets();
+      const bucketName = 'avatars';
+      const bucketExists = buckets?.some(bucket => bucket.name === bucketName);
       
-      if (bucketListError) {
-        console.error("Error listing buckets:", bucketListError);
-        throw bucketListError;
+      if (!bucketExists) {
+        await supabase.storage.createBucket(bucketName, {
+          public: true,
+        });
       }
       
-      const avatarBucket = buckets?.find(b => b.name === 'avatars');
+      // Upload the file
+      const fileExt = avatarFile.name.split('.').pop();
+      const filePath = `${user.id}-${Date.now()}.${fileExt}`;
       
-      // Create bucket if it doesn't exist
-      if (!avatarBucket) {
-        console.log("Creating avatars bucket");
-        const { error: createBucketError } = await supabase.storage.createBucket('avatars', {
-          public: true
-        });
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from(bucketName)
+        .upload(filePath, avatarFile);
         
-        if (createBucketError) {
-          console.error("Error creating bucket:", createBucketError);
-          throw createBucketError;
-        }
-      }
-
-      // Upload file
-      console.log("Uploading file to path:", filePath);
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file, {
-          upsert: true,
-          cacheControl: '0'
-        });
-
-      if (uploadError) {
-        console.error("Error uploading avatar:", uploadError);
-        throw uploadError;
-      }
-
-      // Get public URL
+      if (uploadError) throw uploadError;
+      
+      // Get the public URL
       const { data: urlData } = supabase.storage
-        .from('avatars')
+        .from(bucketName)
         .getPublicUrl(filePath);
-
-      if (!urlData || !urlData.publicUrl) {
-        throw new Error("Failed to get public URL for uploaded avatar");
-      }
-
-      // Update avatar URL in state and database
+        
       const avatarUrl = urlData.publicUrl;
-      console.log("Avatar uploaded, public URL:", avatarUrl);
       
-      setUserData(prevData => ({ ...prevData, avatarUrl }));
-
-      // First update user metadata
-      const { error: authUpdateError } = await supabase.auth.updateUser({
-        data: { avatar_url: avatarUrl }
-      });
-      
-      if (authUpdateError) {
-        console.error("Error updating auth user with avatar:", authUpdateError);
-        throw authUpdateError;
-      }
-      
-      // Then update profile
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .upsert({
-          id: userId,
-          avatar_url: avatarUrl,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
-
-      if (updateError) {
-        console.error("Error updating profile with avatar:", updateError);
-        throw updateError;
-      }
-
-      console.log("Avatar updated successfully");
+      // Update the profile
+      setProfile(prev => ({
+        ...prev,
+        avatar_url: avatarUrl
+      }));
       
       toast({
-        title: "Avatar updated",
-        description: "Your profile picture has been updated successfully.",
+        title: "Avatar uploaded",
+        description: "Your profile picture has been uploaded",
       });
-    } catch (err) {
-      console.error("Error uploading avatar:", err);
+      
+    } catch (error: any) {
+      console.error("Error uploading avatar:", error);
       toast({
-        title: "Error",
-        description: "Failed to upload profile picture. Please try again.",
-        variant: "destructive"
+        title: "Upload failed",
+        description: error.message || "Failed to upload profile picture",
+        variant: "destructive",
       });
     } finally {
-      setSaving(false);
+      setUploadingAvatar(false);
+      setAvatarFile(null);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setAvatarFile(e.target.files[0]);
     }
   };
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <main className="container px-4 py-8">
-        <h1 className="text-3xl font-bold">Profile</h1>
-        <p className="text-muted-foreground mt-1 mb-6">
-          View and manage your personal information
-        </p>
-
-        {loading ? (
-          <div className="flex justify-center items-center h-64">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card className="md:col-span-1">
-              <CardHeader>
-                <CardTitle>Your Avatar</CardTitle>
-                <CardDescription>
-                  This will be displayed on your profile
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col items-center">
-                <Avatar className="h-32 w-32 mb-4">
-                  <AvatarImage src={userData.avatarUrl} />
-                  <AvatarFallback className="text-2xl">
-                    {userData.username?.[0]?.toUpperCase() || userData.fullName?.[0]?.toUpperCase() || "U"}
-                  </AvatarFallback>
-                </Avatar>
-
-                <div className="w-full">
-                  <input
-                    type="file"
-                    id="avatar-upload"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleAvatarUpload}
-                  />
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => document.getElementById('avatar-upload')?.click()}
-                    disabled={saving}
-                  >
-                    {saving ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Uploading...
-                      </>
-                    ) : (
-                      <>
-                        <Camera className="mr-2 h-4 w-4" />
-                        Change Avatar
-                      </>
+      <main className="container max-w-3xl px-4 py-8">
+        <h1 className="text-3xl font-bold mb-6">Your Profile</h1>
+        
+        <Card className="mb-8">
+          <CardHeader className="relative">
+            <CardTitle>Personal Information</CardTitle>
+            <CardDescription>Manage your personal details</CardDescription>
+            {!loading && !isEditing && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-4 right-4"
+                onClick={() => setIsEditing(true)}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {loading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col sm:flex-row items-center gap-6">
+                  <div className="relative">
+                    <Avatar className="h-24 w-24">
+                      <AvatarImage src={profile.avatar_url || ""} alt="Profile" />
+                      <AvatarFallback className="text-2xl">
+                        {profile.username ? profile.username[0].toUpperCase() : "U"}
+                      </AvatarFallback>
+                    </Avatar>
+                    
+                    {isEditing && (
+                      <div className="mt-3">
+                        <input
+                          type="file"
+                          id="avatar-upload"
+                          className="hidden"
+                          accept="image/*"
+                          onChange={handleFileChange}
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => document.getElementById("avatar-upload")?.click()}
+                            disabled={uploadingAvatar}
+                          >
+                            <Upload className="h-4 w-4 mr-1" />
+                            Select
+                          </Button>
+                          
+                          {avatarFile && (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={handleAvatarUpload}
+                              disabled={uploadingAvatar}
+                            >
+                              {uploadingAvatar ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                  Uploading...
+                                </>
+                              ) : (
+                                <>
+                                  <Save className="h-3 w-3 mr-1" />
+                                  Upload
+                                </>
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                        {avatarFile && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {avatarFile.name}
+                          </p>
+                        )}
+                      </div>
                     )}
-                  </Button>
+                  </div>
+                  
+                  <div className="flex-1 space-y-4">
+                    <div>
+                      <Label htmlFor="username">Username</Label>
+                      {isEditing ? (
+                        <Input
+                          id="username"
+                          value={profile.username}
+                          onChange={(e) => setProfile(prev => ({ ...prev, username: e.target.value }))}
+                          className="mt-1"
+                        />
+                      ) : (
+                        <p className="text-lg">{profile.username}</p>
+                      )}
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="email">Email</Label>
+                      <p className="text-lg">{user?.email || "No email found"}</p>
+                    </div>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card className="md:col-span-2">
-              <CardHeader>
-                <CardTitle>Personal Information</CardTitle>
-                <CardDescription>
-                  Manage your personal details and account settings
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleUpdateProfile} className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="username">Username</Label>
-                    <Input
-                      id="username"
-                      value={userData.username}
-                      onChange={(e) => setUserData({ ...userData, username: e.target.value })}
-                      placeholder="Your username"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="fullName">Full Name</Label>
-                    <Input
-                      id="fullName"
-                      value={userData.fullName}
-                      onChange={(e) => setUserData({ ...userData, fullName: e.target.value })}
-                      placeholder="Your full name"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      value={userData.email}
-                      disabled
-                      className="bg-muted"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Email cannot be changed. Please contact support if you need to update your email.
-                    </p>
-                  </div>
-
-                  <Button type="submit" disabled={saving}>
-                    {saving ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Saving...
-                      </>
+                
+                <Separator className="my-6" />
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <Label htmlFor="currency">Preferred Currency</Label>
+                    {isEditing ? (
+                      <Select
+                        value={profile.currency}
+                        onValueChange={(value) => setProfile(prev => ({ ...prev, currency: value }))}
+                      >
+                        <SelectTrigger id="currency" className="mt-1">
+                          <SelectValue placeholder="Select a currency" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="INR">Indian Rupee (₹)</SelectItem>
+                          <SelectItem value="USD">US Dollar ($)</SelectItem>
+                          <SelectItem value="EUR">Euro (€)</SelectItem>
+                          <SelectItem value="GBP">British Pound (£)</SelectItem>
+                        </SelectContent>
+                      </Select>
                     ) : (
-                      "Save Changes"
+                      <p className="text-lg">
+                        {profile.currency === "INR" ? "Indian Rupee (₹)" : 
+                         profile.currency === "USD" ? "US Dollar ($)" :
+                         profile.currency === "EUR" ? "Euro (€)" :
+                         profile.currency === "GBP" ? "British Pound (£)" : profile.currency}
+                      </p>
                     )}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="reportFrequency">Report Frequency</Label>
+                    {isEditing ? (
+                      <Select
+                        value={profile.report_frequency}
+                        onValueChange={(value: "daily" | "weekly" | "monthly") => 
+                          setProfile(prev => ({ ...prev, report_frequency: value }))
+                        }
+                      >
+                        <SelectTrigger id="reportFrequency" className="mt-1">
+                          <SelectValue placeholder="Select frequency" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="daily">Daily</SelectItem>
+                          <SelectItem value="weekly">Weekly</SelectItem>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p className="text-lg">
+                        {profile.report_frequency.charAt(0).toUpperCase() + profile.report_frequency.slice(1)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </CardContent>
+          
+          {isEditing && (
+            <CardFooter className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsEditing(false)}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSave}
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Changes"
+                )}
+              </Button>
+            </CardFooter>
+          )}
+        </Card>
       </main>
     </div>
   );
