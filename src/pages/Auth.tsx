@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,6 +8,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+
+// Import the Supabase URL and key from the client configuration
+import { SUPABASE_URL } from "@/integrations/supabase/client";
 
 const Auth = () => {
   const [email, setEmail] = useState("");
@@ -65,12 +67,12 @@ const Auth = () => {
     }
 
     try {
-      // Call our custom edge function for signup
-      const response = await fetch(`${supabase.supabaseUrl}/functions/v1/auth-emails`, {
+      // Call our custom edge function for signup using the imported URL constant
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/auth-emails`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabase.supabaseKey}`,
+          'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY || supabase.supabaseUrl.split('//')[1].split('.')[0]}`,
         },
         body: JSON.stringify({
           type: 'signup',
@@ -122,12 +124,12 @@ const Auth = () => {
     }
     
     try {
-      // Call our custom edge function for password reset
-      const response = await fetch(`${supabase.supabaseUrl}/functions/v1/auth-emails`, {
+      // Call our custom edge function for password reset using the imported URL constant
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/auth-emails`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabase.supabaseKey}`,
+          'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY || supabase.supabaseUrl.split('//')[1].split('.')[0]}`,
         },
         body: JSON.stringify({
           type: 'reset',
