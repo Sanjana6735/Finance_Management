@@ -1,109 +1,104 @@
-import { useEffect, useState } from "react";
-import Navbar from "@/components/Navbar";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Button } from "@/components/ui/button";
-import { CalendarDays, PlusCircle, Pencil, Trash2 } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import Navbar from "@/components/Navbar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Progress } from "@/components/ui/progress";
+import { Coffee, Home, ShoppingBag, Car, Briefcase, School, Heart, User, Film, PlusCircle, Trash2 } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 interface BudgetItem {
   id: string;
   category: string;
   total: number;
   spent: number;
-  created_at: string;
   percentage: number;
 }
 
 const Budgets = () => {
   const { userId } = useAuth();
   const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
   const [budgets, setBudgets] = useState<BudgetItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [openDialog, setOpenDialog] = useState(false);
-  const [currentMonth, setCurrentMonth] = useState(() => {
-    const date = new Date();
-    return `${date.toLocaleString('default', { month: 'long' })} ${date.getFullYear()}`;
-  });
-  const [formData, setFormData] = useState({
-    category: "",
-    total: "",
-  });
-
-  // Fetch budget data
-  const fetchBudgets = async () => {
-    if (!userId) {
-      setLoading(false);
-      return;
-    }
-    
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('budgets')
-        .select('*')
-        .eq('user_id', userId);
-        
-      if (error) throw error;
-      
-      if (data) {
-        console.log("Fetched budget data:", data);
-        const formattedBudgets = data.map(budget => ({
-          id: budget.id,
-          category: budget.category,
-          total: budget.total,
-          spent: budget.spent,
-          created_at: new Date(budget.created_at).toLocaleDateString('en-IN'),
-          percentage: (budget.spent / budget.total) * 100
-        }));
-        
-        setBudgets(formattedBudgets);
-      }
-    } catch (err) {
-      console.error("Error fetching budgets:", err);
-      toast({
-        title: "Error",
-        description: "Failed to load budget data",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [newBudgetDialogOpen, setNewBudgetDialogOpen] = useState(false);
+  const [newCategory, setNewCategory] = useState("");
+  const [newTotal, setNewTotal] = useState("");
   
+  // Fetch budgets data
   useEffect(() => {
+    const fetchBudgets = async () => {
+      if (!userId) return;
+      
+      setLoading(true);
+      try {
+        // Fetch budgets from Supabase
+        const { data, error } = await supabase
+          .from('budgets')
+          .select('*')
+          .eq('user_id', userId);
+          
+        if (error) throw error;
+        
+        console.log("Fetched budgets data:", data);
+
+        // Process budgets data
+        if (data) {
+          // Calculate percentage for each budget
+          const processedBudgets = data.map(budget => ({
+            ...budget,
+            percentage: (budget.spent / budget.total) * 100
+          }));
+          
+          setBudgets(processedBudgets);
+        }
+      } catch (err) {
+        console.error("Error fetching budgets:", err);
+        toast({
+          title: "Error",
+          description: "Failed to load budget data",
+          variant: "destructive"
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
     fetchBudgets();
     
-    // Set up a refresh interval to check for new data periodically
-    const refreshInterval = setInterval(() => {
-      fetchBudgets();
-    }, 10000); // Refresh every 10 seconds
+    // Listen for budget updates
+    window.addEventListener('budget-update', fetchBudgets);
     
-    return () => clearInterval(refreshInterval);
+    return () => {
+      window.removeEventListener('budget-update', fetchBudgets);
+    };
   }, [userId, toast]);
-
-  // On component mount, add animation classes
-  useEffect(() => {
-    const elements = document.querySelectorAll('.animate-on-mount');
-    elements.forEach((el, index) => {
-      setTimeout(() => {
-        el.classList.add('animate-fade-up');
-        el.classList.remove('opacity-0');
-      }, index * 100);
-    });
-  }, []);
-
-  const handleAddBudget = async () => {
-    if (!formData.category || !formData.total || parseFloat(formData.total) <= 0) {
+  
+  // Create a new budget
+  const handleCreateBudget = async () => {
+    if (!userId) return;
+    
+    if (!newCategory || !newTotal) {
       toast({
-        title: "Error",
-        description: "Please provide a valid category and budget amount",
+        title: "Missing information",
+        description: "Please select a category and enter a budget amount",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    const budgetAmount = parseFloat(newTotal);
+    if (isNaN(budgetAmount) || budgetAmount <= 0) {
+      toast({
+        title: "Invalid amount",
+        description: "Please enter a valid budget amount",
         variant: "destructive"
       });
       return;
@@ -112,303 +107,258 @@ const Budgets = () => {
     try {
       const { data, error } = await supabase
         .from('budgets')
-        .insert([
-          {
-            category: formData.category,
-            total: parseFloat(formData.total),
-            spent: 0,
-            user_id: userId
-          }
-        ])
+        .insert({
+          user_id: userId,
+          category: newCategory,
+          total: budgetAmount,
+          spent: 0
+        })
         .select();
         
       if (error) throw error;
       
+      console.log("Created new budget:", data);
+      
+      // Add the new budget to the state
+      if (data && data[0]) {
+        setBudgets([...budgets, {
+          ...data[0],
+          percentage: 0
+        }]);
+      }
+      
+      // Reset form and close dialog
+      setNewCategory("");
+      setNewTotal("");
+      setNewBudgetDialogOpen(false);
+      
       toast({
-        title: "Budget Added",
-        description: `Your ${formData.category} budget has been created successfully.`
+        title: "Budget created",
+        description: "Your new budget has been created successfully"
       });
       
-      // Fetch the updated budgets instead of manually adding to state
-      fetchBudgets();
-      
-      // Reset form data
-      setFormData({
-        category: "",
-        total: "",
-      });
-      
-      // Close dialog
-      setOpenDialog(false);
+      // Trigger budget update event
+      window.dispatchEvent(new Event('budget-update'));
     } catch (err) {
-      console.error("Error adding budget:", err);
+      console.error("Error creating budget:", err);
       toast({
         title: "Error",
-        description: "Failed to add budget",
+        description: "Failed to create budget",
         variant: "destructive"
       });
     }
   };
-
-  // Delete budget handler
+  
+  // Delete a budget
   const handleDeleteBudget = async (id: string) => {
     try {
       const { error } = await supabase
         .from('budgets')
         .delete()
-        .eq('id', id)
-        .eq('user_id', userId);
-
+        .eq('id', id);
+        
       if (error) throw error;
-
-      // Update local state
+      
+      // Remove the budget from the state
       setBudgets(budgets.filter(budget => budget.id !== id));
-
+      
       toast({
-        title: "Budget Deleted",
+        title: "Budget deleted",
         description: "The budget has been removed successfully"
       });
+      
+      // Trigger budget update event
+      window.dispatchEvent(new Event('budget-update'));
     } catch (err) {
       console.error("Error deleting budget:", err);
       toast({
         title: "Error",
-        description: "Failed to delete budget",
+        description: "Could not delete the budget",
         variant: "destructive"
       });
     }
   };
-
-  // Category options for the dropdown
-  const categories = [
-    { value: "Housing", label: "Housing" },
-    { value: "Food", label: "Food" },
-    { value: "Transport", label: "Transport" },
-    { value: "Shopping", label: "Shopping" },
-    { value: "Entertainment", label: "Entertainment" },
-    { value: "Healthcare", label: "Healthcare" },
-    { value: "Education", label: "Education" },
-    { value: "Personal", label: "Personal" },
-    { value: "EMI", label: "EMI Payment" },
-    { value: "Other", label: "Other" }
-  ];
+  
+  // Get icon for budget category
+  const getBudgetIcon = (category: string) => {
+    switch (category.toLowerCase()) {
+      case 'food':
+        return <Coffee className="h-5 w-5" />;
+      case 'housing':
+        return <Home className="h-5 w-5" />;
+      case 'shopping':
+        return <ShoppingBag className="h-5 w-5" />;
+      case 'transport':
+        return <Car className="h-5 w-5" />;
+      case 'education':
+        return <School className="h-5 w-5" />;
+      case 'healthcare':
+        return <Heart className="h-5 w-5" />;
+      case 'entertainment':
+        return <Film className="h-5 w-5" />;
+      case 'personal':
+        return <User className="h-5 w-5" />;
+      default:
+        return <Briefcase className="h-5 w-5" />;
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <main className="container px-4 py-8">
-        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 opacity-0 animate-on-mount">
+        <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-3xl font-bold">Budgets</h1>
-            <p className="text-muted-foreground mt-1">
-              Manage your monthly budget allocations and track spending
-            </p>
+            <p className="text-muted-foreground">Manage and track your spending limits</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="h-9 gap-1">
-              <CalendarDays size={15} />
-              <span>{currentMonth}</span>
-            </Button>
-            <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-              <DialogTrigger asChild>
-                <Button className="gap-1">
-                  <PlusCircle size={16} />
-                  <span>New Budget</span>
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create New Budget</DialogTitle>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="category">Category</Label>
-                    <Select 
-                      value={formData.category} 
-                      onValueChange={(value) => setFormData({...formData, category: value})}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((category) => (
-                          <SelectItem key={category.value} value={category.value}>
-                            {category.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="grid gap-2">
-                    <Label htmlFor="total">Budget Amount (₹)</Label>
-                    <Input
-                      id="total"
-                      type="number"
-                      value={formData.total}
-                      onChange={(e) => setFormData({...formData, total: e.target.value})}
-                      placeholder="Enter amount"
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setOpenDialog(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleAddBudget}>
-                    Create Budget
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
+          <Button onClick={() => setNewBudgetDialogOpen(true)}>
+            <PlusCircle className="mr-2 h-4 w-4" />
+            New Budget
+          </Button>
         </div>
-        
+
         {loading ? (
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
           </div>
+        ) : budgets.length === 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>No budgets found</CardTitle>
+              <CardDescription>
+                You haven't set any budget targets yet. Create a budget to start tracking your spending.
+              </CardDescription>
+            </CardHeader>
+            <CardFooter>
+              <Button onClick={() => setNewBudgetDialogOpen(true)}>
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Create New Budget
+              </Button>
+            </CardFooter>
+          </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-            <div className="md:col-span-2 opacity-0 animate-on-mount animation-delay-100">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Your Budgets</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {budgets.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12">
-                      <p className="text-muted-foreground text-center">No budgets have been created yet.</p>
-                      <Button
-                        className="mt-4 gap-2"
-                        onClick={() => setOpenDialog(true)}
-                      >
-                        <PlusCircle size={16} />
-                        Create your first budget
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      {budgets.map((budget) => (
-                        <div key={budget.id} className="border rounded-lg p-4">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <h3 className="font-medium text-lg">{budget.category}</h3>
-                              <p className="text-sm text-muted-foreground">Created: {budget.created_at}</p>
-                            </div>
-                            <div className="flex gap-2">
-                              <Button variant="outline" size="sm">
-                                <Pencil size={14} className="mr-1" />
-                                Edit
-                              </Button>
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                className="text-destructive"
-                                onClick={() => handleDeleteBudget(budget.id)}
-                              >
-                                <Trash2 size={14} className="mr-1" />
-                                Delete
-                              </Button>
-                            </div>
-                          </div>
-                          
-                          <div className="mt-4">
-                            <div className="flex justify-between mb-1">
-                              <span className="text-sm">
-                                Progress: {budget.percentage.toFixed(0)}%
-                              </span>
-                              <span className={`text-sm ${budget.percentage > 90 ? "text-destructive" : ""}`}>
-                                ₹{budget.spent.toLocaleString('en-IN')} / ₹{budget.total.toLocaleString('en-IN')}
-                              </span>
-                            </div>
-                            <Progress 
-                              value={budget.percentage} 
-                              className={budget.percentage > 90 ? "bg-destructive" : ""} 
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-            
-            <div className="opacity-0 animate-on-mount animation-delay-200">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Budget Summary</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {budgets.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12">
-                      <p className="text-muted-foreground text-center">Add budgets to see your summary</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      <div>
-                        <h3 className="text-sm font-medium text-muted-foreground mb-2">Total Budget Allocation</h3>
-                        <p className="text-2xl font-bold">
-                          ₹{budgets.reduce((sum, budget) => sum + budget.total, 0).toLocaleString('en-IN')}
-                        </p>
-                      </div>
-                      
-                      <div>
-                        <h3 className="text-sm font-medium text-muted-foreground mb-2">Total Spent</h3>
-                        <p className="text-2xl font-bold">
-                          ₹{budgets.reduce((sum, budget) => sum + budget.spent, 0).toLocaleString('en-IN')}
-                        </p>
-                      </div>
-                      
-                      <div>
-                        <h3 className="text-sm font-medium text-muted-foreground mb-2">Remaining Budget</h3>
-                        <p className="text-2xl font-bold text-green-600">
-                          ₹{(budgets.reduce((sum, budget) => sum + budget.total, 0) - 
-                            budgets.reduce((sum, budget) => sum + budget.spent, 0)).toLocaleString('en-IN')}
-                        </p>
-                      </div>
-                      
-                      <div>
-                        <h3 className="text-sm font-medium text-muted-foreground mb-2">Budget Health</h3>
+          <Card>
+            <CardHeader>
+              <CardTitle>Your Budgets</CardTitle>
+              <CardDescription>
+                Track your spending against your budget targets
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Budget</TableHead>
+                    <TableHead>Spent</TableHead>
+                    <TableHead>Progress</TableHead>
+                    <TableHead className="w-[100px]">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {budgets.map((budget) => (
+                    <TableRow key={budget.id}>
+                      <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
-                          {(() => {
-                            const avgPercentage = budgets.reduce((sum, budget) => sum + budget.percentage, 0) / budgets.length;
-                            if (avgPercentage > 90) {
-                              return (
-                                <>
-                                  <div className="h-3 w-3 rounded-full bg-destructive"></div>
-                                  <span className="text-destructive font-medium">Over Budget</span>
-                                </>
-                              );
-                            } else if (avgPercentage > 75) {
-                              return (
-                                <>
-                                  <div className="h-3 w-3 rounded-full bg-amber-500"></div>
-                                  <span className="text-amber-500 font-medium">Approaching Limit</span>
-                                </>
-                              );
-                            } else {
-                              return (
-                                <>
-                                  <div className="h-3 w-3 rounded-full bg-green-500"></div>
-                                  <span className="text-green-500 font-medium">Healthy</span>
-                                </>
-                              );
-                            }
-                          })()}
+                          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                            {getBudgetIcon(budget.category)}
+                          </div>
+                          <span>{budget.category}</span>
                         </div>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+                      </TableCell>
+                      <TableCell>₹{budget.total.toLocaleString('en-IN')}</TableCell>
+                      <TableCell>₹{budget.spent.toLocaleString('en-IN')}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Progress 
+                            value={budget.percentage} 
+                            className={budget.percentage > 90 ? "bg-destructive" : ""}
+                          />
+                          <span className="w-12 text-xs">
+                            {budget.percentage.toFixed(0)}%
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete budget</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete this budget? This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDeleteBudget(budget.id)}>
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         )}
+
+        {/* New Budget Dialog */}
+        <Dialog open={newBudgetDialogOpen} onOpenChange={setNewBudgetDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create New Budget</DialogTitle>
+              <DialogDescription>
+                Set a spending limit for a specific category.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="category">Category</Label>
+                <Select value={newCategory} onValueChange={setNewCategory}>
+                  <SelectTrigger id="category">
+                    <SelectValue placeholder="Select a category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="food">Food</SelectItem>
+                    <SelectItem value="housing">Housing</SelectItem>
+                    <SelectItem value="transport">Transport</SelectItem>
+                    <SelectItem value="entertainment">Entertainment</SelectItem>
+                    <SelectItem value="shopping">Shopping</SelectItem>
+                    <SelectItem value="healthcare">Healthcare</SelectItem>
+                    <SelectItem value="education">Education</SelectItem>
+                    <SelectItem value="personal">Personal</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="amount">Budget Amount (₹)</Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  placeholder="10000"
+                  value={newTotal}
+                  onChange={(e) => setNewTotal(e.target.value)}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setNewBudgetDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={handleCreateBudget}>Create Budget</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
-      <footer className="container mx-auto px-4 py-6 mt-8 border-t text-center text-muted-foreground">
-        <p>© 2025 Wealth Finance App. All rights reserved.</p>
-      </footer>
     </div>
   );
 };

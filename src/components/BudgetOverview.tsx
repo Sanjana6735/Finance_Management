@@ -1,6 +1,7 @@
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Coffee, Home, ShoppingBag, Car, School, PlusCircle, Pencil, Briefcase, Film, Heart, User } from "lucide-react";
+import { Coffee, Home, ShoppingBag, Car, School, PlusCircle, Pencil, Briefcase, Film, Heart, User, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
@@ -8,6 +9,7 @@ import { useAuth } from "./AuthProvider";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "./ui/button";
 import { useNavigate } from "react-router-dom";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "./ui/alert-dialog";
 
 interface BudgetCategory {
   id: string;
@@ -181,6 +183,36 @@ const BudgetOverview = () => {
     navigate("/budgets");
   };
 
+  // Delete a budget
+  const handleDeleteBudget = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('budgets')
+        .delete()
+        .eq('id', id);
+        
+      if (error) throw error;
+      
+      // Remove the budget from the state
+      setBudgets(budgets.filter(budget => budget.id !== id));
+      
+      toast({
+        title: "Budget deleted",
+        description: "The budget has been removed successfully.",
+      });
+      
+      // Trigger a budget update event
+      window.dispatchEvent(new Event('budget-update'));
+    } catch (err) {
+      console.error("Error deleting budget:", err);
+      toast({
+        title: "Error",
+        description: "Could not delete the budget. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
   // If there are no budgets yet, show a message
   if (!loading && budgets.length === 0) {
     return (
@@ -224,9 +256,36 @@ const BudgetOverview = () => {
                   </div>
                   <span className="font-medium">{budget.name}</span>
                 </div>
-                <Badge variant={budget.percentage > 90 ? "destructive" : "default"}>
-                  {budget.percentage > 90 ? "Over Budget" : `${budget.percentage.toFixed(0)}%`}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant={budget.percentage > 90 ? "destructive" : "default"}>
+                    {budget.percentage > 90 ? "Over Budget" : `${budget.percentage.toFixed(0)}%`}
+                  </Badge>
+                  
+                  {budget.percentage >= 100 && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <Trash2 size={14} className="text-destructive" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete this budget?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently remove this budget from your dashboard. 
+                            This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDeleteBudget(budget.id)}>
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+                </div>
               </div>
               <Progress 
                 value={budget.percentage} 

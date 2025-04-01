@@ -65,36 +65,36 @@ const Auth = () => {
     }
 
     try {
-      // Directly sign up with email and password
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            username,
-          },
-          // Explicitly set emailRedirectTo to ensure correct redirect after email verification
-          emailRedirectTo: `${window.location.origin}/dashboard`,
+      // Call our custom edge function for signup
+      const response = await fetch(`${supabase.supabaseUrl}/functions/v1/auth-emails`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabase.supabaseKey}`,
         },
+        body: JSON.stringify({
+          type: 'signup',
+          email,
+          password,
+          redirect_url: `${window.location.origin}/dashboard`,
+        }),
       });
 
-      if (error) throw error;
-      
-      if (data.user && data.user.identities && data.user.identities.length === 0) {
-        // User already exists
-        toast({
-          title: "Account already exists",
-          description: "Please login with your existing account",
-          variant: "destructive",
-        });
-        setActiveTab("login");
-      } else {
-        setSignupSuccess(true);
-        toast({
-          title: "Registration successful",
-          description: "Please check your email to confirm your account.",
-        });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Registration failed");
       }
+
+      const result = await response.json();
+      
+      toast({
+        title: "Registration successful",
+        description: "Your account has been created. You can now log in.",
+      });
+      
+      setSignupSuccess(true);
+      setActiveTab("login");
+      
     } catch (error: any) {
       console.error("Signup error:", error);
       toast({
@@ -122,16 +122,29 @@ const Auth = () => {
     }
     
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+      // Call our custom edge function for password reset
+      const response = await fetch(`${supabase.supabaseUrl}/functions/v1/auth-emails`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabase.supabaseKey}`,
+        },
+        body: JSON.stringify({
+          type: 'reset',
+          email,
+          redirect_url: `${window.location.origin}/reset-password`,
+        }),
       });
-      
-      if (error) throw error;
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Password reset failed");
+      }
       
       setResetEmailSent(true);
       toast({
-        title: "Reset email sent",
-        description: "Please check your email for the password reset link",
+        title: "Reset request received",
+        description: "If an account exists with this email, you'll receive instructions to reset your password",
       });
     } catch (error: any) {
       toast({
@@ -211,7 +224,7 @@ const Auth = () => {
               <div className="text-center py-6 px-4">
                 <h3 className="font-medium text-lg mb-2">Registration Successful!</h3>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Please check your email to confirm your account.
+                  Your account has been created successfully.
                 </p>
                 <Button 
                   type="button"
@@ -286,7 +299,7 @@ const Auth = () => {
                   <div className="text-center py-4">
                     <h3 className="font-medium mb-2">Reset Email Sent!</h3>
                     <p className="text-sm text-muted-foreground mb-4">
-                      Check your inbox for instructions to reset your password.
+                      If an account exists with this email, you'll receive instructions to reset your password.
                     </p>
                     <Button 
                       type="button" 
@@ -314,7 +327,7 @@ const Auth = () => {
                       />
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Enter your email address and we'll send you a link to reset your password.
+                      Enter your email address and we'll send you instructions to reset your password.
                     </p>
                   </>
                 )}

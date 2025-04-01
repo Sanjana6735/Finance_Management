@@ -177,15 +177,19 @@ const Profile = () => {
       setSaving(true);
       console.log("Uploading avatar for user ID:", userId);
 
-      // Check if storage bucket exists, create if not
-      const { data: buckets } = await supabase.storage.listBuckets();
-      const avatarBucket = buckets?.find(b => b.name === 'avatars');
-      
-      if (!avatarBucket) {
-        console.log("Creating avatars bucket");
-        await supabase.storage.createBucket('avatars', {
-          public: true
-        });
+      // Create storage bucket if it doesn't exist
+      try {
+        const { data: buckets } = await supabase.storage.listBuckets();
+        const avatarBucket = buckets?.find(b => b.name === 'avatars');
+        
+        if (!avatarBucket) {
+          console.log("Creating avatars bucket");
+          await supabase.storage.createBucket('avatars', {
+            public: true
+          });
+        }
+      } catch (bucketError) {
+        console.error("Error checking/creating bucket:", bucketError);
       }
 
       // Upload file
@@ -193,7 +197,8 @@ const Profile = () => {
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, file, {
-          upsert: true
+          upsert: true,
+          cacheControl: '0'
         });
 
       if (uploadError) {
