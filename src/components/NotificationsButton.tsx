@@ -36,6 +36,7 @@ const NotificationsButton = () => {
     
     const fetchNotifications = async () => {
       try {
+        console.log("Fetching notifications for user:", userId);
         const { data, error } = await supabase
           .from('notifications')
           .select('*')

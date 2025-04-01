@@ -23,6 +23,9 @@ const Dashboard = () => {
   const [savingsRate, setSavingsRate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasData, setHasData] = useState(false);
+  const [incomeTrend, setIncomeTrend] = useState<{ value: number; isPositive: boolean } | undefined>(undefined);
+  const [expenseTrend, setExpenseTrend] = useState<{ value: number; isPositive: boolean } | undefined>(undefined);
+  const [savingsTrend, setSavingsTrend] = useState<{ value: number; isPositive: boolean } | undefined>(undefined);
   const { toast } = useToast();
 
   // Fetch user financial data
@@ -32,48 +35,130 @@ const Dashboard = () => {
       
       setLoading(true);
       try {
-        const startOfMonth = new Date();
-        startOfMonth.setDate(1);
-        startOfMonth.setHours(0, 0, 0, 0);
+        // Current month data
+        const currentMonth = new Date();
+        const startOfCurrentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+        startOfCurrentMonth.setHours(0, 0, 0, 0);
         
-        // Get income transactions for the month
-        const { data: incomeData, error: incomeError } = await supabase
+        // Last month data
+        const lastMonth = new Date();
+        lastMonth.setMonth(lastMonth.getMonth() - 1);
+        const startOfLastMonth = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1);
+        startOfLastMonth.setHours(0, 0, 0, 0);
+        const endOfLastMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 0);
+        endOfLastMonth.setHours(23, 59, 59, 999);
+        
+        console.log("Fetching financial data for periods:");
+        console.log("- Current month start:", startOfCurrentMonth.toISOString());
+        console.log("- Last month start:", startOfLastMonth.toISOString());
+        console.log("- Last month end:", endOfLastMonth.toISOString());
+        
+        // Get income transactions for the current month
+        const { data: currentIncomeData, error: currentIncomeError } = await supabase
           .from('transactions')
           .select('amount')
           .eq('type', 'income')
           .eq('user_id', userId)
-          .gte('date', startOfMonth.toISOString());
+          .gte('date', startOfCurrentMonth.toISOString());
           
-        if (incomeError) throw incomeError;
+        if (currentIncomeError) throw currentIncomeError;
         
-        // Get expense transactions for the month
-        const { data: expenseData, error: expenseError } = await supabase
+        // Get expense transactions for the current month
+        const { data: currentExpenseData, error: currentExpenseError } = await supabase
           .from('transactions')
           .select('amount')
           .eq('type', 'expense')
           .eq('user_id', userId)
-          .gte('date', startOfMonth.toISOString());
+          .gte('date', startOfCurrentMonth.toISOString());
           
-        if (expenseError) throw expenseError;
+        if (currentExpenseError) throw currentExpenseError;
         
-        // Calculate totals
-        const totalIncome = incomeData?.reduce((sum, item) => sum + parseFloat(item.amount), 0) || 0;
-        const totalExpenses = expenseData?.reduce((sum, item) => sum + parseFloat(item.amount), 0) || 0;
+        // Get income transactions for the last month
+        const { data: lastIncomeData, error: lastIncomeError } = await supabase
+          .from('transactions')
+          .select('amount')
+          .eq('type', 'income')
+          .eq('user_id', userId)
+          .gte('date', startOfLastMonth.toISOString())
+          .lt('date', startOfCurrentMonth.toISOString());
+          
+        if (lastIncomeError) throw lastIncomeError;
+        
+        // Get expense transactions for the last month
+        const { data: lastExpenseData, error: lastExpenseError } = await supabase
+          .from('transactions')
+          .select('amount')
+          .eq('type', 'expense')
+          .eq('user_id', userId)
+          .gte('date', startOfLastMonth.toISOString())
+          .lt('date', startOfCurrentMonth.toISOString());
+          
+        if (lastExpenseError) throw lastExpenseError;
+        
+        // Calculate totals for current month
+        const currentTotalIncome = currentIncomeData?.reduce((sum, item) => sum + parseFloat(item.amount), 0) || 0;
+        const currentTotalExpenses = currentExpenseData?.reduce((sum, item) => sum + parseFloat(item.amount), 0) || 0;
+        
+        // Calculate totals for last month
+        const lastTotalIncome = lastIncomeData?.reduce((sum, item) => sum + parseFloat(item.amount), 0) || 0;
+        const lastTotalExpenses = lastExpenseData?.reduce((sum, item) => sum + parseFloat(item.amount), 0) || 0;
+        
+        console.log("Current month income:", currentTotalIncome);
+        console.log("Current month expenses:", currentTotalExpenses);
+        console.log("Last month income:", lastTotalIncome);
+        console.log("Last month expenses:", lastTotalExpenses);
         
         // Format as INR
-        setMonthlyIncome(`₹${totalIncome.toLocaleString('en-IN')}`);
-        setMonthlyExpenses(`₹${totalExpenses.toLocaleString('en-IN')}`);
+        setMonthlyIncome(`₹${currentTotalIncome.toLocaleString('en-IN')}`);
+        setMonthlyExpenses(`₹${currentTotalExpenses.toLocaleString('en-IN')}`);
         
-        // Calculate savings rate if there is income
-        if (totalIncome > 0) {
-          const savings = ((totalIncome - totalExpenses) / totalIncome) * 100;
-          setSavingsRate(`${savings.toFixed(1)}%`);
+        // Calculate trends for income
+        if (lastTotalIncome > 0) {
+          const incomeDiff = ((currentTotalIncome - lastTotalIncome) / lastTotalIncome) * 100;
+          setIncomeTrend({
+            value: Math.abs(parseFloat(incomeDiff.toFixed(1))),
+            isPositive: incomeDiff >= 0
+          });
+        }
+        
+        // Calculate trends for expenses
+        if (lastTotalExpenses > 0) {
+          const expenseDiff = ((currentTotalExpenses - lastTotalExpenses) / lastTotalExpenses) * 100;
+          setExpenseTrend({
+            value: Math.abs(parseFloat(expenseDiff.toFixed(1))),
+            isPositive: expenseDiff <= 0 // For expenses, lower is positive
+          });
+        }
+        
+        // Calculate current savings rate
+        let currentSavingsRate = 0;
+        if (currentTotalIncome > 0) {
+          currentSavingsRate = ((currentTotalIncome - currentTotalExpenses) / currentTotalIncome) * 100;
+          setSavingsRate(`${currentSavingsRate.toFixed(1)}%`);
         } else {
           setSavingsRate("0%");
         }
         
+        // Calculate last month's savings rate
+        let lastSavingsRate = 0;
+        if (lastTotalIncome > 0) {
+          lastSavingsRate = ((lastTotalIncome - lastTotalExpenses) / lastTotalIncome) * 100;
+        }
+        
+        // Calculate savings rate trend
+        if (lastTotalIncome > 0) {
+          const savingsRateDiff = currentSavingsRate - lastSavingsRate;
+          setSavingsTrend({
+            value: Math.abs(parseFloat(savingsRateDiff.toFixed(1))),
+            isPositive: savingsRateDiff >= 0
+          });
+        }
+        
         // Check if user has any data
-        setHasData(totalIncome > 0 || totalExpenses > 0 || (incomeData?.length || 0) > 0 || (expenseData?.length || 0) > 0);
+        setHasData(currentTotalIncome > 0 || currentTotalExpenses > 0 || 
+                  lastTotalIncome > 0 || lastTotalExpenses > 0 || 
+                  (currentIncomeData?.length || 0) > 0 || 
+                  (currentExpenseData?.length || 0) > 0);
       } catch (err) {
         console.error("Error fetching financial data:", err);
         toast({
@@ -113,7 +198,7 @@ const Dashboard = () => {
             title="Monthly Income"
             value={loading ? "Loading..." : (monthlyIncome || "₹0")}
             icon={<Wallet size={18} />}
-            trend={hasData ? { value: 0, isPositive: true } : undefined}
+            trend={hasData ? incomeTrend : undefined}
             trendText="vs last month"
             className="opacity-0 animate-on-mount"
           />
@@ -121,7 +206,7 @@ const Dashboard = () => {
             title="Monthly Expenses"
             value={loading ? "Loading..." : (monthlyExpenses || "₹0")}
             icon={<ArrowUpRight size={18} />}
-            trend={hasData ? { value: 0, isPositive: false } : undefined}
+            trend={hasData ? expenseTrend : undefined}
             trendText="vs last month"
             className="opacity-0 animate-on-mount animation-delay-100"
           />
@@ -129,7 +214,7 @@ const Dashboard = () => {
             title="Savings Rate"
             value={loading ? "Loading..." : (savingsRate || "0%")}
             icon={<PiggyBank size={18} />}
-            trend={hasData ? { value: 0, isPositive: true } : undefined}
+            trend={hasData ? savingsTrend : undefined}
             trendText="vs last month"
             className="opacity-0 animate-on-mount animation-delay-200"
           />

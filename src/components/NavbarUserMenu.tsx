@@ -24,6 +24,20 @@ const NavbarUserMenu = () => {
   const { user, signOut } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  
+  // Enable Supabase realtime for the profiles table
+  useEffect(() => {
+    const enableRealtimeForNotifications = async () => {
+      try {
+        await supabase.rpc('supabase_realtime.enable_realtime', { table: 'notifications' });
+        console.log('Realtime enabled for notifications table');
+      } catch (error) {
+        console.error('Error enabling realtime:', error);
+      }
+    };
+    
+    enableRealtimeForNotifications();
+  }, []);
 
   // Fetch user profile data
   useEffect(() => {
@@ -31,6 +45,8 @@ const NavbarUserMenu = () => {
       if (!user) return;
       
       try {
+        console.log("Fetching profile for NavbarUserMenu, user ID:", user.id);
+        
         // Try to get profile from profiles table
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
@@ -39,13 +55,17 @@ const NavbarUserMenu = () => {
           .single();
           
         if (!profileError) {
+          console.log("Profile data found:", profileData);
           setProfile(profileData);
         } else if (profileError.code !== 'PGRST116') {
           console.error("Error fetching profile:", profileError);
+        } else {
+          console.log("No profile found in profiles table");
         }
         
         // If no profile found, use metadata from auth
         if (!profileData || (!profileData.username && !profileData.avatar_url)) {
+          console.log("Using auth metadata for profile data");
           setProfile({
             username: user.user_metadata?.username || user.email?.split('@')[0],
             avatar_url: user.user_metadata?.avatar_url
@@ -57,6 +77,30 @@ const NavbarUserMenu = () => {
     };
     
     fetchProfile();
+    
+    // Set up listener for profile changes
+    const channel = supabase
+      .channel('profile-changes')
+      .on('postgres_changes', 
+        { 
+          event: 'UPDATE', 
+          schema: 'public', 
+          table: 'profiles',
+          filter: `id=eq.${user?.id}` 
+        }, 
+        (payload) => {
+          console.log("Profile updated:", payload);
+          setProfile({
+            username: payload.new.username,
+            avatar_url: payload.new.avatar_url
+          });
+        }
+      )
+      .subscribe();
+      
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   const handleSignOut = async () => {
@@ -77,7 +121,7 @@ const NavbarUserMenu = () => {
   
   // Avatar image or fallback
   const avatarUrl = profile?.avatar_url || user.user_metadata?.avatar_url || "";
-  const avatarFallback = displayName[0].toUpperCase() || "U";
+  const avatarFallback = displayName[0]?.toUpperCase() || "U";
 
   return (
     <div className="flex items-center gap-2">

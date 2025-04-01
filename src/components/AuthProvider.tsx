@@ -36,6 +36,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // First set up the auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log("Auth state change event:", event);
         setUser(session?.user || null);
         setSession(session);
         
@@ -62,6 +63,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           });
         } else if (event === 'USER_UPDATED') {
           console.log("User updated:", session?.user?.id);
+          toast({
+            title: "Profile updated",
+            description: "Your profile has been updated successfully.",
+          });
+        } else if (event === 'PASSWORD_RECOVERY') {
+          navigate('/auth/reset-password');
+          toast({
+            title: "Password recovery",
+            description: "Please check your email for password reset instructions.",
+          });
         }
       }
     );
@@ -70,6 +81,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const initializeAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
+        console.log("Initial session check:", session ? "Session found" : "No session");
         setUser(session?.user || null);
         setSession(session);
         
@@ -89,11 +101,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => {
       subscription.unsubscribe();
     };
-  }, [toast]);
+  }, [toast, navigate]);
 
   // Helper function to check and create profile if needed
   const checkAndCreateProfile = async (user: User) => {
     try {
+      console.log("Checking profile for user:", user.id);
+      
       // Check if profile exists
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
@@ -102,6 +116,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         .single();
         
       if (profileError && profileError.code === 'PGRST116') {
+        console.log("No profile found, creating one...");
+        
         // Profile doesn't exist, create it
         const { error: insertError } = await supabase
           .from('profiles')
@@ -118,6 +134,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         } else {
           console.log("Created new profile for user:", user.id);
         }
+      } else if (profileError) {
+        console.error("Error checking for profile:", profileError);
+      } else {
+        console.log("Existing profile found:", profileData);
       }
     } catch (error) {
       console.error("Error in profile check/creation:", error);

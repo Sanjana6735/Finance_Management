@@ -115,6 +115,8 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
         // Convert file to base64
         const base64 = await fileToBase64(file);
         
+        console.log("Calling receipt-scanner function");
+        
         // Call the receipt scanner function
         const response = await fetch(`${SUPABASE_URL}/functions/v1/receipt-scanner`, {
           method: 'POST',
@@ -127,7 +129,13 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
           }),
         });
         
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`API error: ${response.status} ${errorText}`);
+        }
+        
         const result = await response.json();
+        console.log("Receipt scanner result:", result);
         
         if (result.success && result.data) {
           // Extract data from the response
@@ -141,8 +149,22 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
           // Parse date if available
           if (receiptDate) {
             try {
-              const parsedDate = new Date(receiptDate);
-              if (!isNaN(parsedDate.getTime())) {
+              // Try multiple date formats
+              let parsedDate;
+              if (receiptDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                // YYYY-MM-DD format
+                parsedDate = new Date(receiptDate);
+              } else if (receiptDate.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+                // MM/DD/YYYY format
+                const [month, day, year] = receiptDate.split('/');
+                parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+              } else if (receiptDate.match(/^\d{2}\/\d{2}\/\d{2}$/)) {
+                // MM/DD/YY format
+                const [month, day, year] = receiptDate.split('/');
+                parsedDate = new Date(2000 + parseInt(year), parseInt(month) - 1, parseInt(day));
+              }
+              
+              if (parsedDate && !isNaN(parsedDate.getTime())) {
                 setDate(parsedDate);
               }
             } catch (e) {
@@ -191,23 +213,35 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
     const name = storeName.toLowerCase();
     
     if (name.includes("restaurant") || name.includes("cafe") || name.includes("food") || 
-        name.includes("grocery") || name.includes("supermarket") || name.includes("market")) {
+        name.includes("grocery") || name.includes("supermarket") || name.includes("market") ||
+        name.includes("bakery") || name.includes("deli") || name.includes("coffee")) {
       return "food";
     }
     
     if (name.includes("pharmacy") || name.includes("medical") || name.includes("doctor") || 
-        name.includes("hospital") || name.includes("health")) {
+        name.includes("hospital") || name.includes("health") || name.includes("clinic")) {
       return "healthcare";
     }
     
     if (name.includes("uber") || name.includes("lyft") || name.includes("taxi") || 
-        name.includes("train") || name.includes("metro") || name.includes("transit")) {
+        name.includes("train") || name.includes("metro") || name.includes("transit") ||
+        name.includes("gas") || name.includes("petrol") || name.includes("fuel")) {
       return "transport";
     }
     
     if (name.includes("movie") || name.includes("cinema") || name.includes("theater") || 
-        name.includes("entertainment") || name.includes("game")) {
+        name.includes("entertainment") || name.includes("game") || name.includes("ticket")) {
       return "entertainment";
+    }
+    
+    if (name.includes("school") || name.includes("college") || name.includes("university") ||
+        name.includes("book") || name.includes("course") || name.includes("education")) {
+      return "education";
+    }
+    
+    if (name.includes("rent") || name.includes("mortgage") || name.includes("apartment") ||
+        name.includes("home") || name.includes("house") || name.includes("housing")) {
+      return "housing";
     }
     
     return "shopping";
