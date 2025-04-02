@@ -25,6 +25,7 @@ interface AddTransactionDialogProps {
     category: string;
     date: string;
     account_id?: string;
+    account_name?: string; // Added account_name to show in the transaction list
   }) => void;
 }
 
@@ -48,6 +49,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+  const [selectedAccountName, setSelectedAccountName] = useState<string>("");
 
   // Fetch user accounts on component mount
   useEffect(() => {
@@ -72,6 +74,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
         // Set the first account as default if none selected
         if (!selectedAccountId) {
           setSelectedAccountId(data[0].id);
+          setSelectedAccountName(data[0].name);
         }
       }
     } catch (err) {
@@ -115,6 +118,36 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
       }
       numericAmount = numericAmount.replace(/,/g, "");
       
+      // Update account balance based on transaction type
+      const { data: accountData, error: accountError } = await supabase
+        .from('accounts')
+        .select('balance')
+        .eq('id', selectedAccountId)
+        .single();
+        
+      if (accountError) throw accountError;
+      
+      let newBalance = parseFloat(accountData.balance);
+      const transactionAmount = parseFloat(numericAmount);
+      
+      if (type === "expense") {
+        newBalance -= transactionAmount;
+      } else { // income
+        newBalance += transactionAmount;
+      }
+      
+      // Update the account balance
+      const { error: updateError } = await supabase
+        .from('accounts')
+        .update({ balance: newBalance })
+        .eq('id', selectedAccountId);
+        
+      if (updateError) throw updateError;
+      
+      // Get the account name for the transaction record
+      const selectedAccount = accounts.find(acc => acc.id === selectedAccountId);
+      const accountName = selectedAccount ? selectedAccount.name : "Unknown Account";
+      
       // Let the parent component handle the supabase insertion
       onAddTransaction({
         name,
@@ -122,7 +155,13 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
         type,
         category,
         date: format(date, "MMMM d, yyyy, h:mm a"),
-        account_id: selectedAccountId
+        account_id: selectedAccountId,
+        account_name: accountName
+      });
+      
+      toast({
+        title: "Transaction added",
+        description: `${type === "expense" ? "Expense" : "Income"} of ₹${numericAmount} from ${accountName} account`,
       });
       
       // Reset form fields
@@ -303,6 +342,16 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
     return "shopping";
   };
 
+  // Update selected account name when account ID changes
+  useEffect(() => {
+    if (selectedAccountId && accounts.length > 0) {
+      const account = accounts.find(acc => acc.id === selectedAccountId);
+      if (account) {
+        setSelectedAccountName(account.name);
+      }
+    }
+  }, [selectedAccountId, accounts]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
@@ -405,7 +454,13 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
               <Label htmlFor="account">Account</Label>
               <Select 
                 value={selectedAccountId} 
-                onValueChange={setSelectedAccountId}
+                onValueChange={(value) => {
+                  setSelectedAccountId(value);
+                  const account = accounts.find(acc => acc.id === value);
+                  if (account) {
+                    setSelectedAccountName(account.name);
+                  }
+                }}
               >
                 <SelectTrigger id="account" className="mt-1">
                   <SelectValue placeholder="Select account" />
@@ -414,7 +469,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
                   {accounts.length > 0 ? (
                     accounts.map((account) => (
                       <SelectItem key={account.id} value={account.id}>
-                        {account.name}
+                        {account.name} (₹{parseFloat(account.balance).toLocaleString('en-IN')})
                       </SelectItem>
                     ))
                   ) : (
