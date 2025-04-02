@@ -64,18 +64,31 @@ const Transactions = () => {
     if (!userId) return;
     
     try {
+      console.log("Fetching accounts for user ID:", userId);
       const { data, error } = await supabase
         .from('accounts')
         .select('id, name, type')
         .eq('user_id', userId);
         
-      if (error) throw error;
+      if (error) {
+        console.error("Error fetching user accounts:", error);
+        throw error;
+      }
       
       if (data) {
+        console.log("Fetched user accounts:", data);
         setUserAccounts(data);
+      } else {
+        console.log("No accounts found for user");
+        setUserAccounts([]);
       }
     } catch (err) {
       console.error("Error fetching user accounts:", err);
+      toast({
+        title: "Error",
+        description: "Failed to load your accounts. Please try again.",
+        variant: "destructive"
+      });
     }
   };
 
@@ -95,6 +108,15 @@ const Transactions = () => {
       // Create ISO format date strings
       const fromDate = dateRange.from.toISOString();
       const toDate = dateRange.to.toISOString();
+      
+      console.log("Applying filters:", {
+        dateFrom: fromDate,
+        dateTo: toDate,
+        account,
+        category,
+        type,
+        searchQuery
+      });
       
       // Dispatch a custom event that TransactionList will listen for
       const filterEvent = new CustomEvent('filter-transactions', { 
@@ -223,11 +245,15 @@ const Transactions = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Accounts</SelectItem>
-                    {userAccounts.map(account => (
-                      <SelectItem key={account.id} value={account.id}>
-                        {account.name}
-                      </SelectItem>
-                    ))}
+                    {userAccounts && userAccounts.length > 0 ? (
+                      userAccounts.map(account => (
+                        <SelectItem key={account.id} value={account.id}>
+                          {account.name}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="no-accounts" disabled>No accounts found</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
                 
@@ -271,7 +297,7 @@ const Transactions = () => {
                   disabled={isFiltering}
                 >
                   <Filter size={16} />
-                  <span>Apply Filters</span>
+                  <span>{isFiltering ? "Filtering..." : "Apply Filters"}</span>
                 </Button>
               </div>
             </div>

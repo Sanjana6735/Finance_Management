@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
@@ -43,32 +44,47 @@ interface Transaction {
 
 // Format a date from ISO string to a user-friendly format
 const formatDate = (dateString: string) => {
-  const date = new Date(dateString);
-  const now = new Date();
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  
-  if (date.toDateString() === now.toDateString()) {
-    return `Today, ${format(date, "h:mm a")}`;
-  } else if (date.toDateString() === yesterday.toDateString()) {
-    return `Yesterday, ${format(date, "h:mm a")}`;
-  } else {
-    return format(date, "MMM d, yyyy, h:mm a");
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      console.warn("Invalid date:", dateString);
+      return "Invalid date";
+    }
+    
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (date.toDateString() === now.toDateString()) {
+      return `Today, ${format(date, "h:mm a")}`;
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      return `Yesterday, ${format(date, "h:mm a")}`;
+    } else {
+      return format(date, "MMM d, yyyy, h:mm a");
+    }
+  } catch (error) {
+    console.error("Error formatting date:", error, dateString);
+    return "Date error";
   }
 };
 
 // Format a decimal amount to a currency string
 const formatAmount = (amount: number) => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 2
-  }).format(amount);
+  try {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 2
+    }).format(amount);
+  } catch (error) {
+    console.error("Error formatting amount:", error, amount);
+    return `₹${amount}`;
+  }
 };
 
 const getCategoryIcon = (category: string) => {
   // standardize category name (case insensitive match)
-  const standardizedCategory = category.toLowerCase();
+  const standardizedCategory = category?.toLowerCase() || 'other';
   
   switch (standardizedCategory) {
     case "shopping":
@@ -149,6 +165,7 @@ const TransactionList = () => {
     if (!userId) return;
 
     try {
+      console.log("Fetching accounts for user:", userId);
       const { data, error } = await supabase
         .from('accounts')
         .select('*')
@@ -157,6 +174,7 @@ const TransactionList = () => {
       if (error) throw error;
       
       if (data) {
+        console.log("Fetched accounts:", data);
         setAccounts(data);
       }
     } catch (err) {
@@ -167,6 +185,7 @@ const TransactionList = () => {
   const fetchTransactions = async () => {
     if (!userId) {
       setIsLoading(false);
+      setError("Authentication required. Please sign in.");
       return;
     }
 
@@ -176,13 +195,18 @@ const TransactionList = () => {
     try {
       console.log("Fetching transactions for user ID:", userId);
       
-      const { data: transactionsData, error: transactionsError } = await supabase
+      let query = supabase
         .from('transactions')
         .select('*, accounts(name)')
-        .eq('user_id', userId)
-        .order('date', { ascending: false });
+        .eq('user_id', userId);
+      
+      // Sort by most recent first  
+      query = query.order('date', { ascending: false });
+      
+      const { data: transactionsData, error: transactionsError } = await query;
         
       if (transactionsError) {
+        console.error("Supabase error fetching transactions:", transactionsError);
         throw transactionsError;
       }
       
@@ -193,23 +217,37 @@ const TransactionList = () => {
         const uniqueTransactions = new Map();
         
         transactionsData.forEach(item => {
+          if (!item) {
+            console.warn("Found null item in transactions data");
+            return;
+          }
+          
           // Only add if not already in the map
           if (!uniqueTransactions.has(item.id)) {
-            uniqueTransactions.set(item.id, {
-              id: item.id,
-              name: item.name,
-              amount: formatAmount(Number(item.amount)),
-              type: item.type as "expense" | "income",
-              // Ensure category is properly formatted and stored
-              category: item.category ? item.category.charAt(0).toUpperCase() + item.category.slice(1).toLowerCase() : "Other",
-              date: formatDate(item.date),
-              account_id: item.account_id,
-              account_name: item.accounts ? item.accounts.name : undefined
-            });
+            try {
+              uniqueTransactions.set(item.id, {
+                id: item.id,
+                name: item.name || "Unnamed Transaction",
+                amount: formatAmount(Number(item.amount)),
+                type: item.type as "expense" | "income",
+                // Ensure category is properly formatted and stored
+                category: item.category 
+                  ? item.category.charAt(0).toUpperCase() + item.category.slice(1).toLowerCase() 
+                  : "Other",
+                date: formatDate(item.date),
+                account_id: item.account_id,
+                account_name: item.accounts ? item.accounts.name : "Unknown Account"
+              });
+            } catch (err) {
+              console.error("Error processing transaction item:", err, item);
+            }
           }
         });
         
         setTransactions(Array.from(uniqueTransactions.values()));
+      } else {
+        console.log("No transactions found");
+        setTransactions([]);
       }
 
       // Also fetch accounts for the filter dropdown
@@ -538,6 +576,8 @@ const TransactionList = () => {
       const filters = event.detail;
       setIsLoading(true);
       
+      console.log("Applying filters:", filters);
+      
       let query = supabase
         .from('transactions')
         .select('*, accounts(name)')
@@ -572,32 +612,47 @@ const TransactionList = () => {
               description: "Failed to apply filters. Please try again.",
               variant: "destructive",
             });
+            setIsLoading(false);
             return;
           }
           
           if (data) {
+            console.log("Filtered transactions:", data);
             // Process to avoid duplicates
             const uniqueTransactions = new Map();
             
             data.forEach(item => {
+              if (!item) return;
+              
               if (!uniqueTransactions.has(item.id)) {
-                uniqueTransactions.set(item.id, {
-                  id: item.id,
-                  name: item.name,
-                  amount: formatAmount(Number(item.amount)),
-                  type: item.type,
-                  category: item.category.charAt(0).toUpperCase() + item.category.slice(1).toLowerCase(),
-                  date: formatDate(item.date),
-                  account_id: item.account_id,
-                  account_name: item.accounts ? item.accounts.name : undefined
-                });
+                try {
+                  uniqueTransactions.set(item.id, {
+                    id: item.id,
+                    name: item.name || "Unnamed Transaction",
+                    amount: formatAmount(Number(item.amount)),
+                    type: item.type,
+                    category: item.category ? (item.category.charAt(0).toUpperCase() + item.category.slice(1).toLowerCase()) : "Other",
+                    date: formatDate(item.date),
+                    account_id: item.account_id,
+                    account_name: item.accounts ? item.accounts.name : "Unknown Account"
+                  });
+                } catch (err) {
+                  console.error("Error processing filtered transaction:", err, item);
+                }
               }
             });
             
             setTransactions(Array.from(uniqueTransactions.values()));
+          } else {
+            setTransactions([]);
           }
           
           setIsLoading(false);
+        })
+        .catch(err => {
+          console.error("Exception during filtering:", err);
+          setIsLoading(false);
+          setError("An unexpected error occurred while filtering transactions.");
         });
     };
     
@@ -611,6 +666,10 @@ const TransactionList = () => {
   useEffect(() => {
     if (userId) {
       fetchTransactions();
+    } else {
+      console.log("No user ID available, cannot fetch transactions");
+      setTransactions([]);
+      setIsLoading(false);
     }
     
     const handleDownloadEvent = () => {
