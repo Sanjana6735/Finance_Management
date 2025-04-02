@@ -46,6 +46,8 @@ const Transactions = () => {
 
   // On component mount, add animation classes and fetch user accounts
   useEffect(() => {
+    console.log("Transactions page mounted, userId:", userId);
+    
     const elements = document.querySelectorAll('.animate-on-mount');
     elements.forEach((el, index) => {
       setTimeout(() => {
@@ -61,7 +63,10 @@ const Transactions = () => {
 
   // Fetch user accounts
   const fetchUserAccounts = async () => {
-    if (!userId) return;
+    if (!userId) {
+      console.log("No userId available for fetching accounts");
+      return;
+    }
     
     try {
       console.log("Fetching accounts for user ID:", userId);

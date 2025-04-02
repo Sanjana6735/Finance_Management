@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -35,6 +34,87 @@ interface Account {
   balance: string;
   type: string;
 }
+
+// Add the following helper function to handle transaction creation and account balance updates
+const createTransaction = async (
+  userId: string, 
+  transactionData: any, 
+  supabase: any, 
+  toast: any,
+  setIsSubmitting: (value: boolean) => void
+) => {
+  try {
+    // Parse the amount from the formatted string
+    let numericAmount = transactionData.amount;
+    if (numericAmount.startsWith("₹")) {
+      numericAmount = numericAmount.substring(1);
+    }
+    numericAmount = numericAmount.replace(/,/g, "");
+    
+    const parsedAmount = parseFloat(numericAmount);
+    if (isNaN(parsedAmount)) {
+      throw new Error(`Invalid amount: ${transactionData.amount}`);
+    }
+    
+    // Create the transaction record
+    const { data, error } = await supabase
+      .from('transactions')
+      .insert([
+        {
+          name: transactionData.name,
+          amount: parsedAmount,
+          type: transactionData.type,
+          category: transactionData.category,
+          date: new Date().toISOString(),
+          user_id: userId,
+          account_id: transactionData.account_id
+        }
+      ])
+      .select();
+
+    if (error) throw error;
+    
+    if (data && data.length > 0) {
+      console.log("Transaction created successfully:", data[0]);
+      
+      // Update the account balance
+      const { data: accountData, error: accountError } = await supabase
+        .from('accounts')
+        .select('balance')
+        .eq('id', transactionData.account_id)
+        .single();
+        
+      if (accountError) throw accountError;
+      
+      let newBalance = parseFloat(accountData.balance);
+      if (transactionData.type === 'expense') {
+        newBalance -= parsedAmount;
+      } else {
+        newBalance += parsedAmount;
+      }
+      
+      const { error: updateError } = await supabase
+        .from('accounts')
+        .update({ balance: newBalance })
+        .eq('id', transactionData.account_id);
+        
+      if (updateError) throw updateError;
+      
+      console.log(`Account balance updated to: ${newBalance}`);
+      
+      return {
+        success: true,
+        data: data[0],
+        message: "Transaction created and account updated successfully"
+      };
+    }
+    
+    return { success: false, message: "No data returned from transaction creation" };
+  } catch (err) {
+    console.error("Error creating transaction:", err);
+    return { success: false, message: err.message || "An unknown error occurred" };
+  }
+};
 
 const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTransactionDialogProps) => {
   const { toast } = useToast();
@@ -108,72 +188,68 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
       return;
     }
 
+    setIsSubmitting(true);
+
     try {
-      setIsSubmitting(true);
-      
-      // Format amount for display and calculations
-      let numericAmount = amount;
-      if (numericAmount.startsWith("₹")) {
-        numericAmount = numericAmount.substring(1);
-      }
-      numericAmount = numericAmount.replace(/,/g, "");
-      
-      // Update account balance based on transaction type
-      const { data: accountData, error: accountError } = await supabase
-        .from('accounts')
-        .select('balance')
-        .eq('id', selectedAccountId)
-        .single();
-        
-      if (accountError) throw accountError;
-      
-      let newBalance = parseFloat(accountData.balance);
-      const transactionAmount = parseFloat(numericAmount);
-      
-      if (type === "expense") {
-        newBalance -= transactionAmount;
-      } else { // income
-        newBalance += transactionAmount;
-      }
-      
-      // Update the account balance
-      const { error: updateError } = await supabase
-        .from('accounts')
-        .update({ balance: newBalance })
-        .eq('id', selectedAccountId);
-        
-      if (updateError) throw updateError;
-      
-      // Get the account name for the transaction record
-      const selectedAccount = accounts.find(acc => acc.id === selectedAccountId);
-      const accountName = selectedAccount ? selectedAccount.name : "Unknown Account";
-      
-      // Let the parent component handle the supabase insertion
-      onAddTransaction({
+      console.log("Creating transaction with data:", {
         name,
-        amount: numericAmount,
+        amount,
         type,
         category,
-        date: format(date, "MMMM d, yyyy, h:mm a"),
-        account_id: selectedAccountId,
-        account_name: accountName
+        accountId: selectedAccountId
       });
       
-      toast({
-        title: "Transaction added",
-        description: `${type === "expense" ? "Expense" : "Income"} of ₹${numericAmount} from ${accountName} account`,
-      });
+      const result = await createTransaction(
+        userId,
+        {
+          name,
+          amount,
+          type,
+          category,
+          account_id: selectedAccountId
+        },
+        supabase,
+        toast,
+        setIsSubmitting
+      );
       
-      // Reset form fields
-      setName("");
-      setAmount("");
-      setType("expense");
-      setCategory("shopping");
-      setDate(new Date());
-      setReceipt(null);
-      
+      if (result.success) {
+        // Get the account name for the transaction record
+        const selectedAccount = accounts.find(acc => acc.id === selectedAccountId);
+        const accountName = selectedAccount ? selectedAccount.name : "Unknown Account";
+
+        onAddTransaction({
+          id: result.data.id,
+          name,
+          amount,
+          type,
+          category,
+          date: format(date, "MMMM d, yyyy, h:mm a"),
+          account_id: selectedAccountId,
+          account_name: accountName
+        });
+        
+        toast({
+          title: "Transaction added",
+          description: `${type === "expense" ? "Expense" : "Income"} of ${amount} from ${accountName} account`,
+        });
+        
+        // Reset form fields
+        setName("");
+        setAmount("");
+        setType("expense");
+        setCategory("shopping");
+        setDate(new Date());
+        setReceipt(null);
+      } else {
+        toast({
+          title: "Error",
+          description: result.message || "Failed to add transaction",
+          variant: "destructive"
+        });
+      }
     } catch (error) {
-      console.error("Error adding transaction:", error);
+      console.error("Error in transaction submission:", error);
       toast({
         title: "Error",
         description: "Failed to add transaction. Please try again.",

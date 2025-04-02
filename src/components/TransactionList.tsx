@@ -170,7 +170,10 @@ const TransactionList = () => {
         .select('*')
         .eq('user_id', userId);
         
-      if (error) throw error;
+      if (error) {
+        console.error("Error fetching accounts:", error);
+        throw error;
+      }
       
       if (data) {
         console.log("Fetched accounts:", data);
@@ -185,6 +188,7 @@ const TransactionList = () => {
     if (!userId) {
       setIsLoading(false);
       setError("Authentication required. Please sign in.");
+      console.log("No userId available for fetching transactions");
       return;
     }
 
@@ -194,22 +198,24 @@ const TransactionList = () => {
     try {
       console.log("Fetching transactions for user ID:", userId);
       
-      let query = supabase
+      // Use a simple query first to debug
+      const { data: transactionsData, error: transactionsError } = await supabase
         .from('transactions')
-        .select('*, accounts(name)')
-        .eq('user_id', userId);
-      
-      // Sort by most recent first  
-      query = query.order('date', { ascending: false });
-      
-      const { data: transactionsData, error: transactionsError } = await query;
+        .select(`
+          *,
+          accounts (name)
+        `)
+        .eq('user_id', userId)
+        .order('date', { ascending: false });
         
       if (transactionsError) {
         console.error("Supabase error fetching transactions:", transactionsError);
         throw transactionsError;
       }
       
-      if (transactionsData) {
+      console.log("Raw transactions data:", transactionsData);
+      
+      if (transactionsData && transactionsData.length > 0) {
         console.log("Fetched transactions:", transactionsData);
         
         // Clear any existing duplicates by using a Map with transaction id as key
@@ -243,7 +249,9 @@ const TransactionList = () => {
           }
         });
         
-        setTransactions(Array.from(uniqueTransactions.values()));
+        const transactionsArray = Array.from(uniqueTransactions.values());
+        console.log("Processed transactions:", transactionsArray);
+        setTransactions(transactionsArray);
       } else {
         console.log("No transactions found");
         setTransactions([]);
@@ -612,6 +620,7 @@ const TransactionList = () => {
               description: "Failed to apply filters. Please try again.",
               variant: "destructive",
             });
+            setError("Failed to apply filters. Please try again.");
             setIsLoading(false);
             return;
           }
@@ -661,7 +670,10 @@ const TransactionList = () => {
   }, [userId, toast]);
 
   useEffect(() => {
+    console.log("TransactionList component mounted, userId:", userId);
+    
     if (userId) {
+      console.log("Fetching transactions for user:", userId);
       fetchTransactions();
     } else {
       console.log("No user ID available, cannot fetch transactions");
@@ -688,6 +700,7 @@ const TransactionList = () => {
     };
   }, [userId]);
 
+  
   if (isLoading && transactions.length === 0) {
     return (
       <Card>
