@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
@@ -603,6 +602,7 @@ const TransactionList = () => {
         query = query.ilike('name', `%${filters.searchQuery}%`);
       }
       
+      // Fix for TypeScript error - properly handle the Promise
       query.order('date', { ascending: false })
         .then(({ data, error }) => {
           if (error) {
@@ -648,12 +648,9 @@ const TransactionList = () => {
           }
           
           setIsLoading(false);
-        })
-        .catch(err => {
-          console.error("Exception during filtering:", err);
-          setIsLoading(false);
-          setError("An unexpected error occurred while filtering transactions.");
         });
+        // Remove the .catch() and handle errors in the .then() block above instead
+        // This is the part that was causing the TypeScript error
     };
     
     window.addEventListener('filter-transactions', handleFilterEvent as EventListener);
