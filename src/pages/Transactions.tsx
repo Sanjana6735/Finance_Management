@@ -59,6 +59,18 @@ const Transactions = () => {
     if (userId) {
       fetchUserAccounts();
     }
+
+    // Listen for auth state changes
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("Auth state changed in Transactions page:", event);
+      if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+        fetchUserAccounts();
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
   }, [userId]);
 
   // Fetch user accounts

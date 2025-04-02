@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
@@ -378,7 +379,14 @@ const TransactionList = () => {
       console.log("Adding new transaction:", newTransaction);
       
       // Parse the amount from the formatted string
-      const parsedAmount = parseFloat(newTransaction.amount);
+      let parsedAmount: number;
+      if (typeof newTransaction.amount === 'string') {
+        // Handle currency symbol and comma separators
+        const cleanAmount = newTransaction.amount.replace(/[₹,\s]/g, '');
+        parsedAmount = parseFloat(cleanAmount);
+      } else {
+        parsedAmount = parseFloat(String(newTransaction.amount));
+      }
       
       if (isNaN(parsedAmount)) {
         throw new Error(`Invalid amount: ${newTransaction.amount}`);
@@ -392,11 +400,13 @@ const TransactionList = () => {
         'education', 'entertainment', 'personal', 'emi', 'other',
         'salary', 'investments', 'freelance'
       ];
-      const standardizedCategory = newTransaction.category.toLowerCase();
+      const standardizedCategory = typeof newTransaction.category === 'string' 
+        ? newTransaction.category.toLowerCase() 
+        : 'shopping';
       
-      if (!validCategories.includes(standardizedCategory)) {
-        throw new Error(`Invalid category: ${standardizedCategory}`);
-      }
+      const category = validCategories.includes(standardizedCategory) 
+        ? standardizedCategory 
+        : 'shopping';
       
       // Check for duplicate prevention
       const checkDate = new Date();
@@ -432,7 +442,7 @@ const TransactionList = () => {
             name: newTransaction.name,
             amount: parsedAmount,
             type: newTransaction.type,
-            category: standardizedCategory,
+            category: category,
             date: new Date().toISOString(),
             user_id: userId,
             account_id: newTransaction.account_id
@@ -471,7 +481,7 @@ const TransactionList = () => {
         setTransactions(prevTransactions => [formattedTransaction, ...prevTransactions]);
         
         if (newTransaction.type === 'expense') {
-          await updateBudget(standardizedCategory, parsedAmount);
+          await updateBudget(category, parsedAmount);
         }
         
         await updateAccountBalance(parsedAmount, newTransaction.type, newTransaction.account_id);
@@ -658,8 +668,6 @@ const TransactionList = () => {
           
           setIsLoading(false);
         });
-        // Remove the .catch() and handle errors in the .then() block above instead
-        // This is the part that was causing the TypeScript error
     };
     
     window.addEventListener('filter-transactions', handleFilterEvent as EventListener);
@@ -672,6 +680,7 @@ const TransactionList = () => {
   useEffect(() => {
     console.log("TransactionList component mounted, userId:", userId);
     
+    // Force refresh transactions when auth state changes
     if (userId) {
       console.log("Fetching transactions for user:", userId);
       fetchTransactions();
@@ -700,6 +709,19 @@ const TransactionList = () => {
     };
   }, [userId]);
 
+  // Add a useEffect to monitor auth state changes
+  useEffect(() => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("Auth state changed:", event, "User ID:", session?.user?.id);
+      if (session?.user) {
+        fetchTransactions();
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
   
   if (isLoading && transactions.length === 0) {
     return (

@@ -19,7 +19,7 @@ interface AddTransactionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAddTransaction: (transaction: {
-    id?: string;  // Added id as an optional property to fix the type error
+    id?: string;
     name: string;
     amount: string;
     type: "expense" | "income";
@@ -221,7 +221,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
         const accountName = selectedAccount ? selectedAccount.name : "Unknown Account";
 
         onAddTransaction({
-          id: result.data.id,
+          id: result.data.id, // This is where we're adding the id property
           name,
           amount,
           type,

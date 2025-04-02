@@ -24,4 +24,21 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   },
 });
 
+// Initialize supabase client and check the current session
+(async function() {
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (session) {
+      console.log("User is authenticated:", session.user.id);
+    } else {
+      console.log("No active session found");
+    }
+    if (error) {
+      console.error("Error checking auth session:", error);
+    }
+  } catch (err) {
+    console.error("Failed to initialize Supabase client:", err);
+  }
+})();
+
 console.log("Supabase client initialized with URL:", SUPABASE_URL);
