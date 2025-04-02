@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,15 @@ interface AddTransactionDialogProps {
     type: "expense" | "income";
     category: string;
     date: string;
+    account_id?: string;
   }) => void;
+}
+
+interface Account {
+  id: string;
+  name: string;
+  balance: string;
+  type: string;
 }
 
 const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTransactionDialogProps) => {
@@ -38,11 +46,48 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
   const [isScanning, setIsScanning] = useState(false);
   const [receipt, setReceipt] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+
+  // Fetch user accounts on component mount
+  useEffect(() => {
+    if (userId && open) {
+      fetchUserAccounts();
+    }
+  }, [userId, open]);
+
+  const fetchUserAccounts = async () => {
+    if (!userId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('user_id', userId);
+        
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        setAccounts(data);
+        // Set the first account as default if none selected
+        if (!selectedAccountId) {
+          setSelectedAccountId(data[0].id);
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching user accounts:", err);
+      toast({
+        title: "Error",
+        description: "Failed to load your accounts",
+        variant: "destructive"
+      });
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!name || !amount) {
+    if (!name || !amount || !selectedAccountId) {
       toast({
         title: "Invalid input",
         description: "Please fill in all required fields",
@@ -77,6 +122,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
         type,
         category,
         date: format(date, "MMMM d, yyyy, h:mm a"),
+        account_id: selectedAccountId
       });
       
       // Reset form fields
@@ -148,7 +194,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
             setName("Receipt Purchase");
           }
           
-          if (totalAmount && !isNaN(parseFloat(totalAmount))) {
+          if (totalAmount && !isNaN(parseFloat(String(totalAmount)))) {
             setAmount(String(totalAmount));
           }
           
@@ -354,6 +400,29 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
                 </PopoverContent>
               </Popover>
             </div>
+
+            <div>
+              <Label htmlFor="account">Account</Label>
+              <Select 
+                value={selectedAccountId} 
+                onValueChange={setSelectedAccountId}
+              >
+                <SelectTrigger id="account" className="mt-1">
+                  <SelectValue placeholder="Select account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.length > 0 ? (
+                    accounts.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="" disabled>No accounts found</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           
           <div className="space-y-2">
@@ -394,7 +463,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onAddTransaction }: AddTrans
           </div>
           
           <DialogFooter>
-            <Button type="submit" disabled={isSubmitting || isScanning}>
+            <Button type="submit" disabled={isSubmitting || isScanning || accounts.length === 0}>
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

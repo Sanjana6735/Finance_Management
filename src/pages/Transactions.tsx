@@ -21,9 +21,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import AddTransactionDialog from "@/components/AddTransactionDialog";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/components/AuthProvider";
+
+interface Account {
+  id: string;
+  name: string;
+  type: string;
+}
 
 const Transactions = () => {
   const { toast } = useToast();
+  const { userId } = useAuth();
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -34,8 +42,9 @@ const Transactions = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [isFiltering, setIsFiltering] = useState(false);
+  const [userAccounts, setUserAccounts] = useState<Account[]>([]);
 
-  // On component mount, add animation classes
+  // On component mount, add animation classes and fetch user accounts
   useEffect(() => {
     const elements = document.querySelectorAll('.animate-on-mount');
     elements.forEach((el, index) => {
@@ -44,7 +53,31 @@ const Transactions = () => {
         el.classList.remove('opacity-0');
       }, index * 100);
     });
-  }, []);
+    
+    if (userId) {
+      fetchUserAccounts();
+    }
+  }, [userId]);
+
+  // Fetch user accounts
+  const fetchUserAccounts = async () => {
+    if (!userId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('accounts')
+        .select('id, name, type')
+        .eq('user_id', userId);
+        
+      if (error) throw error;
+      
+      if (data) {
+        setUserAccounts(data);
+      }
+    } catch (err) {
+      console.error("Error fetching user accounts:", err);
+    }
+  };
 
   // Apply filters when date range changes
   useEffect(() => {
@@ -190,9 +223,11 @@ const Transactions = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Accounts</SelectItem>
-                    <SelectItem value="chase">Chase Checking</SelectItem>
-                    <SelectItem value="amex">Amex Platinum</SelectItem>
-                    <SelectItem value="vanguard">Vanguard 401k</SelectItem>
+                    {userAccounts.map(account => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 

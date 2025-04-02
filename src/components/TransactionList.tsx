@@ -22,6 +22,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { useAuth } from "./AuthProvider";
 
+// Add account interface
+interface Account {
+  id: string;
+  name: string;
+  balance: string;
+  type: string;
+}
+
 interface Transaction {
   id: string;
   name: string;
@@ -29,6 +37,8 @@ interface Transaction {
   type: "expense" | "income";
   category: string;
   date: string;
+  account_id?: string;
+  account_name?: string;
 }
 
 // Format a date from ISO string to a user-friendly format
@@ -104,7 +114,12 @@ const TransactionItem = ({ transaction }: { transaction: Transaction }) => {
         </div>
         <div>
           <p className="font-medium text-sm">{transaction.name}</p>
-          <p className="text-xs text-muted-foreground">{transaction.date}</p>
+          <div className="flex flex-col">
+            <p className="text-xs text-muted-foreground">{transaction.date}</p>
+            {transaction.account_name && (
+              <p className="text-xs text-muted-foreground">Account: {transaction.account_name}</p>
+            )}
+          </div>
         </div>
       </div>
       <div className={cn(
@@ -126,6 +141,28 @@ const TransactionList = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState<string>("all");
+
+  // Fetch user accounts
+  const fetchAccounts = async () => {
+    if (!userId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('user_id', userId);
+        
+      if (error) throw error;
+      
+      if (data) {
+        setAccounts(data);
+      }
+    } catch (err) {
+      console.error("Error fetching accounts:", err);
+    }
+  };
 
   const fetchTransactions = async () => {
     if (!userId) {
@@ -139,23 +176,23 @@ const TransactionList = () => {
     try {
       console.log("Fetching transactions for user ID:", userId);
       
-      const { data, error } = await supabase
+      const { data: transactionsData, error: transactionsError } = await supabase
         .from('transactions')
-        .select('*')
+        .select('*, accounts(name)')
         .eq('user_id', userId)
         .order('date', { ascending: false });
         
-      if (error) {
-        throw error;
+      if (transactionsError) {
+        throw transactionsError;
       }
       
-      if (data) {
-        console.log("Fetched transactions:", data);
+      if (transactionsData) {
+        console.log("Fetched transactions:", transactionsData);
         
         // Clear any existing duplicates by using a Map with transaction id as key
         const uniqueTransactions = new Map();
         
-        data.forEach(item => {
+        transactionsData.forEach(item => {
           // Only add if not already in the map
           if (!uniqueTransactions.has(item.id)) {
             uniqueTransactions.set(item.id, {
@@ -165,13 +202,18 @@ const TransactionList = () => {
               type: item.type as "expense" | "income",
               // Ensure category is properly formatted and stored
               category: item.category ? item.category.charAt(0).toUpperCase() + item.category.slice(1).toLowerCase() : "Other",
-              date: formatDate(item.date)
+              date: formatDate(item.date),
+              account_id: item.account_id,
+              account_name: item.accounts ? item.accounts.name : undefined
             });
           }
         });
         
         setTransactions(Array.from(uniqueTransactions.values()));
       }
+
+      // Also fetch accounts for the filter dropdown
+      await fetchAccounts();
     } catch (err) {
       console.error("Error fetching transactions:", err);
       setError("Failed to load transactions. Please try again later.");
@@ -333,6 +375,7 @@ const TransactionList = () => {
           description: "This transaction appears to be a duplicate of one you just added.",
           variant: "destructive",
         });
+        setIsProcessing(false);
         return;
       }
       
@@ -346,7 +389,8 @@ const TransactionList = () => {
             type: newTransaction.type,
             category: standardizedCategory,
             date: new Date().toISOString(),
-            user_id: userId
+            user_id: userId,
+            account_id: newTransaction.account_id
           }
         ])
         .select();
@@ -358,13 +402,24 @@ const TransactionList = () => {
       if (data && data.length > 0) {
         console.log("Transaction added successfully:", data[0]);
         
+        // Get account name for display
+        const { data: accountData } = await supabase
+          .from('accounts')
+          .select('name')
+          .eq('id', newTransaction.account_id)
+          .single();
+          
+        const accountName = accountData ? accountData.name : 'Unknown Account';
+        
         const formattedTransaction = {
           id: data[0].id,
           name: data[0].name,
           amount: formatAmount(Number(data[0].amount)),
           type: data[0].type,
           category: data[0].category,
-          date: formatDate(data[0].date)
+          date: formatDate(data[0].date),
+          account_id: data[0].account_id,
+          account_name: accountName
         };
         
         // Update the state with the new transaction
@@ -374,7 +429,7 @@ const TransactionList = () => {
           await updateBudget(standardizedCategory, parsedAmount);
         }
         
-        await updateAccountBalance(parsedAmount, newTransaction.type);
+        await updateAccountBalance(parsedAmount, newTransaction.type, newTransaction.account_id);
         
         toast({
           title: "Transaction added",
@@ -400,16 +455,16 @@ const TransactionList = () => {
     }
   };
 
-  const updateAccountBalance = async (amount: number, type: string) => {
-    if (!userId) return;
+  const updateAccountBalance = async (amount: number, type: string, accountId: string) => {
+    if (!userId || !accountId) return;
     
     try {
-      console.log(`Updating account balance: ${amount}, type: ${type}`);
+      console.log(`Updating account balance: ${amount}, type: ${type}, account ID: ${accountId}`);
       
       const { data: accounts, error: accountsError } = await supabase
         .from('accounts')
         .select('*')
-        .eq('user_id', userId);
+        .eq('id', accountId);
         
       if (accountsError) throw accountsError;
       
@@ -433,8 +488,12 @@ const TransactionList = () => {
         if (updateError) throw updateError;
         
         console.log(`Account ${account.name} balance updated to: ₹${newBalance}`);
+        
+        // Trigger account update event
+        const event = new CustomEvent('account-update');
+        window.dispatchEvent(event);
       } else {
-        console.log("No account found for user");
+        console.log("No account found with ID", accountId);
       }
     } catch (err) {
       console.error("Error updating account balance:", err);
@@ -481,7 +540,7 @@ const TransactionList = () => {
       
       let query = supabase
         .from('transactions')
-        .select('*')
+        .select('*, accounts(name)')
         .eq('user_id', userId);
       
       if (filters.dateFrom && filters.dateTo) {
@@ -489,6 +548,7 @@ const TransactionList = () => {
       }
       
       if (filters.account && filters.account !== 'all') {
+        query = query.eq('account_id', filters.account);
       }
       
       if (filters.category && filters.category !== 'all') {
@@ -527,7 +587,9 @@ const TransactionList = () => {
                   amount: formatAmount(Number(item.amount)),
                   type: item.type,
                   category: item.category.charAt(0).toUpperCase() + item.category.slice(1).toLowerCase(),
-                  date: formatDate(item.date)
+                  date: formatDate(item.date),
+                  account_id: item.account_id,
+                  account_name: item.accounts ? item.accounts.name : undefined
                 });
               }
             });
@@ -561,10 +623,12 @@ const TransactionList = () => {
     
     window.addEventListener('download-transactions', handleDownloadEvent);
     window.addEventListener('refresh-transactions', handleRefreshEvent);
+    window.addEventListener('account-update', fetchAccounts);
     
     return () => {
       window.removeEventListener('download-transactions', handleDownloadEvent);
       window.removeEventListener('refresh-transactions', handleRefreshEvent);
+      window.removeEventListener('account-update', fetchAccounts);
     };
   }, [userId]);
 
