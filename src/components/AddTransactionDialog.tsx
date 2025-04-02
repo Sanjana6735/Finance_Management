@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -18,13 +19,14 @@ interface AddTransactionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAddTransaction: (transaction: {
+    id?: string;  // Added id as an optional property to fix the type error
     name: string;
     amount: string;
     type: "expense" | "income";
     category: string;
     date: string;
     account_id?: string;
-    account_name?: string; // Added account_name to show in the transaction list
+    account_name?: string;
   }) => void;
 }
 
